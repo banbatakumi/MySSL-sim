@@ -1,23 +1,9 @@
-import math
 import config  # COURT_WIDTH, COURT_HEIGHT のため
 
-# --- シミュレータ定数 ---
-ROBOT_DIAMETER_M = 0.18  # ロボットの直径 (メートル)
-ROBOT_RADIUS_M = ROBOT_DIAMETER_M / 2.0  # ロボットの半径 (メートル)
+
 COURT_WIDTH_M = config.COURT_WIDTH / 100.0  # コートの幅 (メートル)
 COURT_HEIGHT_M = config.COURT_HEIGHT / 100.0  # コートの高さ (メートル)
-ROBOT_MAX_SPEED_MPS = 1.5  # ロボットの最大速度 (メートル/秒)
-ROBOT_MAX_ACCE_MPSS = 5  # ロボットの最大加速度 (メートル/秒^2)
-ROBOT_MAX_ANGULAR_SPEED_RADPS = 6 * math.pi  # ロボットの最大角速度 (ラジアン/秒) - 3 RPS
 
-BALL_RADIUS_M = 0.0215  # ボールの半径 (メートル)
-BALL_FRICTION_COEFF = 0.4  # ボールの摩擦係数
-GRAVITY_MPSS = 9.81  # 重力加速度 (メートル/秒^2)
-
-SENSOR_FOV_HALF_ANGLE_RAD = math.radians(40)  # センサーの視野角の半分 (ラジアン)
-
-KICK_POWER_TO_SPEED_MPS = 3.0 / 100.0  # キックパワーから速度への変換係数 (メートル/秒)
-DRIBBLE_PULL_FACTOR = 8.0  # ドリブル時のボール引き寄せ係数
 
 # --- 初期描画定数 (ウィンドウサイズ変更時に更新) ---
 INITIAL_PIXELS_PER_METER = 300  # 初期スケール (ピクセル/メートル)
