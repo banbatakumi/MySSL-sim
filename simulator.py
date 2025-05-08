@@ -1,4 +1,3 @@
-
 import pygame
 import socket
 import json
@@ -22,19 +21,17 @@ ROBOT_RADIUS_M = ROBOT_DIAMETER_M / 2.0
 COURT_WIDTH_M = config.COURT_WIDTH / 100.0
 COURT_HEIGHT_M = config.COURT_HEIGHT / 100.0
 ROBOT_MAX_SPEED_MPS = 1.5
-ROBOT_MAX_ACCE_MPSS = 5.0
+ROBOT_MAX_ACCE_MPSS = 5
 ROBOT_MAX_ANGULAR_SPEED_RADPS = 6 * math.pi  # 3 RPS
 
 BALL_RADIUS_M = 0.0215
 BALL_FRICTION_COEFF = 0.4
 GRAVITY_MPSS = 9.81
 
-# SENSOR_EFFECTIVE_DISTANCE_Mは使われなくなるが、概念として残す
-SENSOR_EFFECTIVE_DISTANCE_M = 0.05  # フォトセンサーが反応するめり込みの深さに近い値 (参考)
 SENSOR_FOV_HALF_ANGLE_RAD = math.radians(40)
 
-KICK_POWER_TO_SPEED_MPS = 2.0 / 100.0
-DRIBBLE_PULL_FACTOR = 20.0  # ボールを吸い付ける力を強めに設定
+KICK_POWER_TO_SPEED_MPS = 3.0 / 100.0
+DRIBBLE_PULL_FACTOR = 8.0
 
 # --- Initial Drawing Constants (will be updated for resizable window) ---
 INITIAL_PIXELS_PER_METER = 300
@@ -54,6 +51,8 @@ COLOR_BLUE_ROBOT = (0, 0, 255)
 COLOR_BALL = (255, 165, 0)
 COLOR_TEXT = (200, 200, 200)
 COLOR_ROBOT_FRONT = (200, 0, 0)
+# ### ADDED ###: Color for debug vector
+COLOR_DEBUG_VECTOR = (0, 255, 0)  # Green
 
 SIMULATION_TIMESTEP = 0.01
 FPS = 60
@@ -83,30 +82,19 @@ class SimulatedBall:
     def update_physics(self, dt):
         if self.is_dribbled_by:
             robot = self.is_dribbled_by
-            # ### MODIFIED ###: ボールがロボットに20%めり込む位置に固定
-            # ロボットの中心から見て、ロボットの向きに、ロボット半径の80%の距離
-            dribbler_offset_m = robot.radius_m * 0.8
+            overlap_depth_m = self.radius_m * 0.2
+            dribbler_offset_m = robot.radius_m - overlap_depth_m
 
             target_x = robot.x_m + dribbler_offset_m * \
                 math.cos(robot.angle_rad)
             target_y = robot.y_m + dribbler_offset_m * - \
                 math.sin(robot.angle_rad)
 
-            # ボールをターゲット位置に強く引き寄せる (実質的に固定)
-            self.vx_mps = (target_x - self.x_m) * \
-                DRIBBLE_PULL_FACTOR  # dt で割らないことでより強く追従
+            self.vx_mps = (target_x - self.x_m) * DRIBBLE_PULL_FACTOR
             self.vy_mps = (target_y - self.y_m) * DRIBBLE_PULL_FACTOR
-
-            # ターゲット位置に直接設定する方がより確実かもしれない
-            # self.x_m = target_x
-            # self.y_m = target_y
-            # self.vx_mps = robot.vx_mps # ロボットの速度をそのまま反映
-            # self.vy_mps = robot.vy_mps
 
             self.x_m += self.vx_mps * dt
             self.y_m += self.vy_mps * dt
-            # ### END MODIFICATION ###
-
         else:
             current_speed_mps = math.hypot(self.vx_mps, self.vy_mps)
             if current_speed_mps > 0:
@@ -152,8 +140,8 @@ class SimulatedBall:
 
     def start_dribble(self, robot):
         self.is_dribbled_by = robot
-        # ドリブル開始時にボールを正しい位置にスナップさせる
-        dribbler_offset_m = robot.radius_m * 0.8
+        overlap_depth_m = self.radius_m * 0.2
+        dribbler_offset_m = robot.radius_m - overlap_depth_m
         self.x_m = robot.x_m + dribbler_offset_m * math.cos(robot.angle_rad)
         self.y_m = robot.y_m + dribbler_offset_m * -math.sin(robot.angle_rad)
         self.vx_mps = robot.vx_mps
@@ -161,9 +149,6 @@ class SimulatedBall:
 
     def stop_dribble(self):
         if self.is_dribbled_by:
-            # ドリブル解除時、ボールはロボットの現在の速度を一部引き継ぐ（オプション）
-            # self.vx_mps = self.is_dribbled_by.vx_mps * 0.5
-            # self.vy_mps = self.is_dribbled_by.vy_mps * 0.5
             self.is_dribbled_by = None
 
     def get_vision_data(self):
@@ -194,11 +179,21 @@ class SimulatedRobot:
         self.current_command = None
         self.last_command_time = 0
 
+        # ### ADDED ###: Store effective move angle for debug drawing
+        self.debug_effective_move_angle_global_rad = 0.0
+        self.debug_move_speed_mps = 0.0
+        # ### END ADDITION ###
+
     def set_command(self, command_dict):
         self.current_command = command_dict.get("cmd")
         self.last_command_time = time.time()
 
     def update_physics(self, dt, ball):
+        # Reset debug values
+        # Default to current angle if no move cmd
+        self.debug_effective_move_angle_global_rad = self.angle_rad
+        self.debug_move_speed_mps = 0.0
+
         if self.current_command is None or (time.time() - self.last_command_time > 0.5):
             self.vx_mps *= 0.9
             self.vy_mps *= 0.9
@@ -215,12 +210,19 @@ class SimulatedRobot:
                 self.vx_mps = 0.0
                 self.vy_mps = 0.0
                 self.omega_radps = 0.0
+                if ball.is_dribbled_by == self:
+                    ball.stop_dribble()
             else:
                 move_speed_mps = cmd.get("move_speed", 0.0)
                 move_angle_relative_deg = cmd.get("move_angle", 0.0)
                 move_angle_relative_rad = math.radians(move_angle_relative_deg)
                 effective_move_angle_global_rad = normalize_angle_rad(
                     self.angle_rad + move_angle_relative_rad)
+
+                # ### ADDED ###: Store for debug drawing
+                self.debug_effective_move_angle_global_rad = effective_move_angle_global_rad
+                self.debug_move_speed_mps = move_speed_mps
+                # ### END ADDITION ###
 
                 target_vx_global = move_speed_mps * \
                     math.cos(effective_move_angle_global_rad)
@@ -279,40 +281,45 @@ class SimulatedRobot:
                     self.omega_radps = math.copysign(
                         ROBOT_MAX_ANGULAR_SPEED_RADPS, self.omega_radps)
 
-            dribble_power = cmd.get("dribble", 0)
-            if isinstance(dribble_power, (int, float)) and dribble_power > 0:
-                # ### MODIFIED ###: ドリブル開始条件 - ボールがロボットに十分近いか
-                dist_center_to_center = math.hypot(
-                    ball.x_m - self.x_m, ball.y_m - self.y_m)
-                # ボールがロボットの半径 + ボール半径以内 (つまり接触しているか、少しめり込んでいる)
-                # かつ、ドリブル開始のために少し広めの許容範囲 (例: +3cm)
-                if dist_center_to_center < (self.radius_m + ball.radius_m + 0.03):
-                    angle_to_ball_global_cw = - \
-                        math.atan2(ball.y_m - self.y_m, ball.x_m - self.x_m)
-                    relative_angle_to_ball = normalize_angle_rad(
-                        angle_to_ball_global_cw - self.angle_rad)
-                    if abs(relative_angle_to_ball) < math.radians(70):  # 正面 +/- 70度程度でドリブル開始試行
-                        ball.start_dribble(self)
-                # ### END MODIFICATION ###
-            else:
-                if ball.is_dribbled_by == self:
-                    ball.stop_dribble()
-
             kick_power = cmd.get("kick", 0)
+            dribble_power = cmd.get("dribble", 0)
+
+            kicked_this_step = False
             if isinstance(kick_power, (int, float)) and kick_power > 0:
                 dist_to_ball_center = math.hypot(
                     ball.x_m - self.x_m, ball.y_m - self.y_m)
-                # キックは、ボールがロボットの前面に接触しているか、ごくわずかにめり込んでいる場合
-                max_kick_dist = self.radius_m + ball.radius_m + \
-                    0.01  # 1cm tolerance for kick initiation
+                max_kick_dist = self.radius_m + ball.radius_m * 0.5
 
                 if dist_to_ball_center < max_kick_dist:
                     angle_to_ball_global_cw = - \
                         math.atan2(ball.y_m - self.y_m, ball.x_m - self.x_m)
                     relative_angle_to_ball = normalize_angle_rad(
                         angle_to_ball_global_cw - self.angle_rad)
-                    if abs(relative_angle_to_ball) < math.radians(30):  # 正面 +/- 30度程度
+                    if abs(relative_angle_to_ball) < math.radians(30):
+                        if ball.is_dribbled_by == self:
+                            ball.stop_dribble()
                         ball.kick(self, kick_power)
+                        kicked_this_step = True
+
+            if not kicked_this_step:
+                if isinstance(dribble_power, (int, float)) and dribble_power > 0:
+                    dist_center_to_center = math.hypot(
+                        ball.x_m - self.x_m, ball.y_m - self.y_m)
+                    touch_distance = self.radius_m + ball.radius_m - 0.005
+                    initiate_dribble_max_dist = self.radius_m + ball.radius_m + 0.02
+
+                    if dist_center_to_center < initiate_dribble_max_dist:
+                        angle_to_ball_global_cw = - \
+                            math.atan2(ball.y_m - self.y_m,
+                                       ball.x_m - self.x_m)
+                        relative_angle_to_ball = normalize_angle_rad(
+                            angle_to_ball_global_cw - self.angle_rad)
+                        if abs(relative_angle_to_ball) < math.radians(70):
+                            if dist_center_to_center < touch_distance or ball.is_dribbled_by == self:
+                                ball.start_dribble(self)
+                else:
+                    if ball.is_dribbled_by == self:
+                        ball.stop_dribble()
 
         self.x_m += self.vx_mps * dt
         self.y_m += self.vy_mps * dt
@@ -339,14 +346,12 @@ class SimulatedRobot:
 
         dx = ball.x_m - self.x_m
         dy = ball.y_m - self.y_m
-        dist_center_to_center_sq = dx*dx + dy*dy
-        dist_center_to_center = math.sqrt(dist_center_to_center_sq)
+        dist_center_to_center = math.hypot(dx, dy)
 
-        # ### MODIFIED ###: フォトセンサーはボールがロボットにめり込んでいる場合に反応
-        # ボール中心がロボットの円周の内側にあるか (ball_radiusのオフセットは考慮しない)
-        # かつ、ボールの中心がロボットの中心から見て、ロボットの半径より内側にある。
-        # (めり込み度合いはボール半径に依存するが、ここでは中心間距離で判定)
-        if dist_center_to_center < self.radius_m:  # ボール中心がロボット円周内
+        overlap_depth_m = ball.radius_m * 0.2
+        dribbler_offset_m = self.radius_m - overlap_depth_m
+
+        if dist_center_to_center <= dribbler_offset_m + 0.005:
             angle_to_ball_global_cw = -math.atan2(dy, dx)
             relative_angle_to_ball_cw = normalize_angle_rad(
                 angle_to_ball_global_cw - self.angle_rad)
@@ -358,7 +363,6 @@ class SimulatedRobot:
                 relative_angle_to_ball_cw - math.pi)
             if abs(angle_to_back_sensor_cw) < SENSOR_FOV_HALF_ANGLE_RAD:
                 photo_back = True
-        # ### END MODIFICATION ###
 
         return {
             "type": "sensor_data",
@@ -383,12 +387,34 @@ class SimulatedRobot:
         front_indicator_len_screen = front_indicator_len_world * \
             simulator.current_pixels_per_meter
 
-        front_x = screen_x + front_indicator_len_screen * \
-            math.cos(self.angle_rad)
-        front_y = screen_y + front_indicator_len_screen * \
-            math.sin(self.angle_rad)
-        pygame.draw.line(screen, COLOR_ROBOT_FRONT, (screen_x,
-                         screen_y), (int(front_x), int(front_y)), 3)
+        front_x_indicator = screen_x + \
+            front_indicator_len_screen * math.cos(self.angle_rad)
+        front_y_indicator = screen_y + \
+            front_indicator_len_screen * math.sin(self.angle_rad)
+        pygame.draw.line(screen, COLOR_ROBOT_FRONT, (screen_x, screen_y), (int(
+            front_x_indicator), int(front_y_indicator)), 3)
+
+        # ### ADDED ###: Draw debug move vector
+        if simulator.show_debug_vectors and self.current_command and not self.current_command.get("stop", False) and self.debug_move_speed_mps > 0:
+            # Scale vector length by speed (e.g., max speed = 0.5m on screen)
+            # Max visual length of vector can be, for example, 2 * robot_radius
+            # Or a fixed world length like 0.3m
+            vec_len_world = 0.3 * \
+                (self.debug_move_speed_mps / ROBOT_MAX_SPEED_MPS)
+            vec_len_screen = vec_len_world * simulator.current_pixels_per_meter
+
+            vec_end_x_world = self.x_m + vec_len_world * \
+                math.cos(self.debug_effective_move_angle_global_rad)
+            vec_end_y_world = self.y_m + vec_len_world * - \
+                math.sin(
+                    self.debug_effective_move_angle_global_rad)  # World Y is up
+
+            vec_end_screen_x, vec_end_screen_y = simulator.world_to_screen_pos(
+                vec_end_x_world, vec_end_y_world)
+
+            pygame.draw.line(screen, COLOR_DEBUG_VECTOR, (screen_x,
+                             screen_y), (vec_end_screen_x, vec_end_screen_y), 2)
+        # ### END ADDITION ###
 
 
 # --- UDP Communication Handler for Simulator ---
@@ -410,7 +436,7 @@ class SimulatorUDP:
         if config.ENABLE_YELLOW_ROBOT and "yellow" in self.robots:
             try:
                 ip = config.YELLOW_ROBOT_IP
-                port = config.COMMAND_SEND_PORT
+                port = config.YELLOW_SEND_PORT
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.bind((ip, port))
                 sock.settimeout(0.1)
@@ -424,7 +450,7 @@ class SimulatorUDP:
         if config.ENABLE_BLUE_ROBOT and "blue" in self.robots:
             try:
                 ip = config.BLUE_ROBOT_IP
-                port = config.COMMAND_SEND_PORT
+                port = config.BLUE_SEND_PORT
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.bind((ip, port))
                 sock.settimeout(0.1)
@@ -535,6 +561,8 @@ class Simulator:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("monospace", 16)
         self.running = True
+        # ### ADDED ###: Flag for showing debug vectors
+        self.show_debug_vectors = False
 
         self.robots = {}
         if config.ENABLE_YELLOW_ROBOT:
@@ -631,7 +659,11 @@ class Simulator:
                             self.ball.stop_dribble()
                         self.ball = SimulatedBall(0, 0)
                         self.udp_handler.ball = self.ball
-                    if event.key == pygame.K_ESCAPE:
+                    # ### ADDED ###: Toggle debug vectors with 'm' key
+                    elif event.key == pygame.K_m:
+                        self.show_debug_vectors = not self.show_debug_vectors
+                    # ### END ADDITION ###
+                    elif event.key == pygame.K_ESCAPE:
                         self.running = False
 
             if dt <= 0:
@@ -640,8 +672,6 @@ class Simulator:
 
             for robot in self.robots.values():
                 robot.update_physics(dt, self.ball)
-            # ボールがドリブルされている場合、ロボットのupdate_physicsの後にボールの位置が再調整されることがあるので
-            # ボールのupdate_physicsはロボットの後が良い
             self.ball.update_physics(dt)
 
             current_time = time.time()
@@ -687,49 +717,18 @@ class Simulator:
                          cl_top_s, cl_bot_s, FIELD_MARKING_WIDTH_PX)
 
     def draw_hud(self):
+        # ### MODIFIED ###: Only draw FPS
         y_offset = 10
         sim_fps_text = f"Sim FPS: {self.clock.get_fps():.1f}"
         surf_fps = self.font.render(sim_fps_text, True, COLOR_TEXT)
         self.screen.blit(surf_fps, (self.current_screen_width_px -
                          surf_fps.get_width() - 10, y_offset))
-
-        for color, robot in self.robots.items():
-            text = f"{color.capitalize()} Robot: Pos({robot.x_m:.2f},{robot.y_m:.2f}) Ang({math.degrees(robot.angle_rad):.1f})"
-            surf = self.font.render(text, True, COLOR_TEXT)
-            self.screen.blit(surf, (10, y_offset))
-            y_offset += 20
-            if robot.current_command:
-                cmd = robot.current_command
-                move_speed_cmd = cmd.get('move_speed', 0)
-                move_angle_cmd = cmd.get('move_angle', 0)
-                face_angle_cmd = cmd.get('face_angle', 0)
-                stop_cmd = cmd.get('stop', False)
-                dribble_cmd = cmd.get('dribble', 0)
-                kick_cmd = cmd.get('kick', 0)
-
-                cmd_text_l1 = f"  Cmd:Vel({move_speed_cmd:.2f}@{move_angle_cmd:.1f}r)" \
-                    f" Face({face_angle_cmd:.1f})"
-                cmd_text_l2 = f"  Dribble:{dribble_cmd} Kick:{kick_cmd} Stop:{stop_cmd}"
-
-                surf_cmd_l1 = self.font.render(cmd_text_l1, True, COLOR_TEXT)
-                self.screen.blit(surf_cmd_l1, (10, y_offset))
-                y_offset += 20
-                surf_cmd_l2 = self.font.render(cmd_text_l2, True, COLOR_TEXT)
-                self.screen.blit(surf_cmd_l2, (10, y_offset))
-                y_offset += 20
-
-        ball_text = f"Ball: Pos({self.ball.x_m:.2f},{self.ball.y_m:.2f}) Vel({math.hypot(self.ball.vx_mps, self.ball.vy_mps):.2f})"
-        surf_ball = self.font.render(ball_text, True, COLOR_TEXT)
-        self.screen.blit(surf_ball, (10, y_offset))
-        y_offset += 20
-        if self.ball.is_dribbled_by:
-            dribble_text = f"  Dribbled by: {self.ball.is_dribbled_by.color_name}"
-            surf_dribble = self.font.render(dribble_text, True, COLOR_TEXT)
-            self.screen.blit(surf_dribble, (10, y_offset))
+        # ### END MODIFICATION ###
 
     def draw(self):
         self.draw_field()
         for robot in self.robots.values():
+            # Pass simulator instance for debug flag
             robot.draw(self.screen, self)
         self.ball.draw(self.screen, self)
         self.draw_hud()

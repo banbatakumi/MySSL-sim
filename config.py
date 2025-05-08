@@ -3,7 +3,8 @@
 VISION_LISTEN_PORT = 50007
 
 # ESP32 への送信ポート
-COMMAND_SEND_PORT = 50008
+YELLOW_SEND_PORT = 50008
+BLUE_SEND_PORT = 50012
 
 # ESP32 からの受信ポート
 YELLOW_SENSOR_LISTEN_PORT = 50009  # 黄ロボット用のセンサー受信ポート
@@ -17,11 +18,11 @@ LISTEN_IP = "0.0.0.0"
 
 # ロボットのローカル IP アドレス
 YELLOW_ROBOT_IP = "127.0.0.1"
-BLUE_ROBOT_IP = "192.168.50.108"
+BLUE_ROBOT_IP = "127.0.0.1"
 
 # 有効にするロボットの設定 (True/False で切り替え)
 ENABLE_YELLOW_ROBOT = True
-ENABLE_BLUE_ROBOT = False  # 必要に応じて True に変更
+ENABLE_BLUE_ROBOT = False
 
 # 受信バッファサイズ
 BUFFER_SIZE = 65536
