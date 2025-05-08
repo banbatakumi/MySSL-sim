@@ -93,8 +93,12 @@ class Simulator:
             self.current_pixels_per_meter = 1.0
 
     def run(self):
+        accumulated_time = 0.0  # シミュレーションの累積時間
+        last_time = time.time()
         while self.running:
-            dt = const.SIMULATION_TIMESTEP
+            current_time = time.time()
+            dt = current_time - last_time
+            last_time = current_time
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:

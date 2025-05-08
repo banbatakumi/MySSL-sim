@@ -27,4 +27,4 @@ COLOR_ROBOT_FRONT = (200, 0, 0)  # ロボットの前面インジケータの色
 COLOR_DEBUG_VECTOR = (0, 255, 0)  # デバッグ用ベクトルの色 (緑)
 
 SIMULATION_TIMESTEP = 0.01  # シミュレーションのタイムステップ (秒)
-FPS = 60  # 目標フレームレート
+FPS = 30  # 目標フレームレート

@@ -102,7 +102,8 @@ class SimulatedRobot:
                     scale_factor = max_robot_propulsion_force_N / target_force_magnitude_N
                     actual_force_x_N *= scale_factor
                     actual_force_y_N *= scale_factor
-                    # print(f"スリップ検知! 目標力: {target_force_magnitude_N:.2f}N, 最大: {max_robot_propulsion_force_N:.2f}N")
+                    print(
+                        f"スリップ検知! 目標力: {target_force_magnitude_N:.2f}N, 最大: {max_robot_propulsion_force_N:.2f}N")
 
                 actual_ax_global = actual_force_x_N / self.mass_kg if self.mass_kg > 0 else 0
                 actual_ay_global = actual_force_y_N / self.mass_kg if self.mass_kg > 0 else 0
@@ -110,12 +111,14 @@ class SimulatedRobot:
 
                 # 元の加速度制限 (ROBOT_MAX_ACCE_MPSS) は、スリップ後の加速度に適用するか検討。
                 # スリップモデルが物理的限界を表すため、ここではスリップ後の加速度をそのまま使用。
-                # max_accel_this_command = cmd.get("move_acce", const.ROBOT_MAX_ACCE_MPSS)
-                # current_actual_accel_magnitude = math.hypot(actual_ax_global, actual_ay_global)
-                # if current_actual_accel_magnitude > max_accel_this_command:
-                #     scale = max_accel_this_command / current_actual_accel_magnitude
-                #     actual_ax_global *= scale
-                #     actual_ay_global *= scale
+                max_accel_this_command = cmd.get(
+                    "move_acce", params.ROBOT_MAX_ACCE_MPSS)
+                current_actual_accel_magnitude = math.hypot(
+                    actual_ax_global, actual_ay_global)
+                if current_actual_accel_magnitude > max_accel_this_command:
+                    scale = max_accel_this_command / current_actual_accel_magnitude
+                    actual_ax_global *= scale
+                    actual_ay_global *= scale
 
                 self.vx_mps += actual_ax_global * dt
                 self.vy_mps += actual_ay_global * dt
