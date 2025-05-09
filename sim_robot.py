@@ -2,7 +2,7 @@ import pygame
 import math
 import time
 
-import sim_constants as const
+import config
 import sim_params as params  # 調整可能なパラメータをインポート
 from sim_utils import normalize_angle_rad
 
@@ -46,6 +46,7 @@ class SimulatedRobot:
         """ロボットの物理演算を更新する"""
         self.debug_effective_move_angle_global_rad = self.angle_rad
         self.debug_move_speed_mps = 0.0
+        cmd = self.current_command
 
         if self.current_command is None or (time.time() - self.last_command_time > 0.5):
             self.vx_mps *= 0.9
@@ -57,8 +58,8 @@ class SimulatedRobot:
                 self.vy_mps = 0
             if abs(self.omega_radps) < 0.01:
                 self.omega_radps = 0
+            return
         else:
-            cmd = self.current_command
             if cmd.get("stop", False):
                 self.vx_mps = 0.0
                 self.vy_mps = 0.0
@@ -192,13 +193,60 @@ class SimulatedRobot:
                     if ball.is_dribbled_by == self:
                         ball.stop_dribble()
 
-        self.x_m += self.vx_mps * dt
-        self.y_m += self.vy_mps * dt
-        self.angle_rad = normalize_angle_rad(
-            self.angle_rad + self.omega_radps * dt)
+        x_translation_this_step = self.vx_mps * dt
+        y_translation_this_step = self.vy_mps * dt
+        angle_rotation_this_step = self.omega_radps * dt  # 時計回りの回転量
 
-        half_court_width = const.COURT_WIDTH_M / 2.0
-        half_court_height = const.COURT_HEIGHT_M / 2.0
+        initial_x_m_this_step = self.x_m
+        initial_y_m_this_step = self.y_m
+        initial_angle_rad_this_step = self.angle_rad  # 時計回り
+
+        if cmd.get("face_axis", 0) == 1:
+            pivot_offset_m = self.radius_m
+
+            # 回転軸のワールド座標 (initial_angle_rad_this_step は時計回り)
+            # X = R * cos(theta_cw)
+            # Y = R * -sin(theta_cw) (ワールドY軸上向きの場合)
+            pivot_x_world_at_step_start = initial_x_m_this_step + \
+                pivot_offset_m * math.cos(initial_angle_rad_this_step)
+            pivot_y_world_at_step_start = initial_y_m_this_step + \
+                pivot_offset_m * -math.sin(initial_angle_rad_this_step)
+
+            translated_pivot_x_world = pivot_x_world_at_step_start + x_translation_this_step
+            translated_pivot_y_world = pivot_y_world_at_step_start + y_translation_this_step
+
+            robot_x_after_translation = initial_x_m_this_step + x_translation_this_step
+            robot_y_after_translation = initial_y_m_this_step + y_translation_this_step
+
+            dx_robot_to_pivot_after_translation = robot_x_after_translation - \
+                translated_pivot_x_world
+            dy_robot_to_pivot_after_translation = robot_y_after_translation - \
+                translated_pivot_y_world
+
+            # angle_rotation_this_step は時計回りの回転量
+            # 2D回転 (時計回り):
+            # x' = x*cos(theta) + y*sin(theta)
+            # y' = -x*sin(theta) + y*cos(theta)
+            cos_rot = math.cos(angle_rotation_this_step)
+            sin_rot = math.sin(angle_rotation_this_step)
+
+            rotated_dx = dx_robot_to_pivot_after_translation * cos_rot + \
+                dy_robot_to_pivot_after_translation * sin_rot
+            rotated_dy = -dx_robot_to_pivot_after_translation * sin_rot + \
+                dy_robot_to_pivot_after_translation * cos_rot
+
+            self.x_m = translated_pivot_x_world + rotated_dx
+            self.y_m = translated_pivot_y_world + rotated_dy
+            self.angle_rad = normalize_angle_rad(
+                initial_angle_rad_this_step + angle_rotation_this_step)  # 時計回り
+        else:
+            self.x_m = initial_x_m_this_step + x_translation_this_step
+            self.y_m = initial_y_m_this_step + y_translation_this_step
+            self.angle_rad = normalize_angle_rad(
+                initial_angle_rad_this_step + angle_rotation_this_step)  # 時計回り
+
+        half_court_width = config.COURT_WIDTH_M / 2.0
+        half_court_height = config.COURT_HEIGHT_M / 2.0
         self.x_m = max(-half_court_width + self.radius_m,
                        min(self.x_m, half_court_width - self.radius_m))
         self.y_m = max(-half_court_height + self.radius_m,
@@ -235,7 +283,7 @@ class SimulatedRobot:
         return {"type": "sensor_data", "photo": {"front": photo_front, "back": photo_back}}
 
     def draw(self, screen: pygame.Surface, simulator: 'Simulator'):
-        robot_color_rgb = const.COLOR_YELLOW_ROBOT if self.color_name == "yellow" else const.COLOR_BLUE_ROBOT
+        robot_color_rgb = config.COLOR_YELLOW_ROBOT if self.color_name == "yellow" else config.COLOR_BLUE_ROBOT
         screen_x, screen_y = simulator.world_to_screen_pos(self.x_m, self.y_m)
         robot_screen_radius = max(
             1, int(self.radius_m * simulator.current_pixels_per_meter))
@@ -243,7 +291,7 @@ class SimulatedRobot:
         pygame.draw.circle(screen, robot_color_rgb,
                            (screen_x, screen_y), robot_screen_radius)
         pygame.draw.circle(screen, (0, 0, 0), (screen_x, screen_y),
-                           robot_screen_radius, const.ROBOT_OUTLINE_WIDTH_PX)
+                           robot_screen_radius, config.ROBOT_OUTLINE_WIDTH_PX)
 
         front_indicator_len_screen = self.radius_m * \
             0.8 * simulator.current_pixels_per_meter
@@ -252,7 +300,7 @@ class SimulatedRobot:
             front_indicator_len_screen * math.cos(self.angle_rad)
         front_y_indicator = screen_y + \
             front_indicator_len_screen * math.sin(self.angle_rad)
-        pygame.draw.line(screen, const.COLOR_ROBOT_FRONT, (screen_x, screen_y), (int(
+        pygame.draw.line(screen, config.COLOR_ROBOT_FRONT, (screen_x, screen_y), (int(
             front_x_indicator), int(front_y_indicator)), 3)
 
         if simulator.show_debug_vectors and self.current_command and not self.current_command.get("stop", False) and self.debug_move_speed_mps > 0:
@@ -266,5 +314,5 @@ class SimulatedRobot:
 
             vec_end_screen_x, vec_end_screen_y = simulator.world_to_screen_pos(
                 vec_end_x_world, vec_end_y_world)
-            pygame.draw.line(screen, const.COLOR_DEBUG_VECTOR, (screen_x,
+            pygame.draw.line(screen, config.COLOR_DEBUG_VECTOR, (screen_x,
                              screen_y), (vec_end_screen_x, vec_end_screen_y), 2)

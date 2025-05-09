@@ -1,21 +1,10 @@
 from sim_udp_handler import SimulatorUDP
 from sim_robot import SimulatedRobot
 from sim_ball import SimulatedBall
-import sim_constants as const  # 定数モジュールをインポート
+import config
 import pygame
 import time
-import math
 import sys
-
-sys.path.append('.')
-try:
-    import config
-except ImportError as e:
-    print(f"プロジェクトモジュールのインポート中にエラーが発生しました: {e}")
-    print("simulator.py が main.py, config.py および lib/ フォルダと同じディレクトリにあることを確認してください。")
-    sys.exit(1)
-
-# sim_config_params は sim_robot や sim_udp_handler で直接インポートされる
 
 
 class Simulator:
@@ -23,10 +12,10 @@ class Simulator:
         pygame.init()
         pygame.font.init()
 
-        self.current_screen_width_px = const.INITIAL_SCREEN_WIDTH_PX
-        self.current_screen_height_px = const.INITIAL_SCREEN_HEIGHT_PX
-        self.current_screen_padding_px = const.INITIAL_SCREEN_PADDING_PX
-        self.current_pixels_per_meter = const.INITIAL_PIXELS_PER_METER
+        self.current_screen_width_px = config.INITIAL_SCREEN_WIDTH_PX
+        self.current_screen_height_px = config.INITIAL_SCREEN_HEIGHT_PX
+        self.current_screen_padding_px = config.INITIAL_SCREEN_PADDING_PX
+        self.current_pixels_per_meter = config.INITIAL_PIXELS_PER_METER
 
         self.screen: pygame.Surface = pygame.display.set_mode(
             (self.current_screen_width_px, self.current_screen_height_px),
@@ -43,9 +32,9 @@ class Simulator:
         self.robots: dict[str, SimulatedRobot] = {}
         if config.ENABLE_YELLOW_ROBOT:
             self.robots["yellow"] = SimulatedRobot(
-                0, "yellow", -const.COURT_WIDTH_M/4, 0, 0)
+                0, "yellow", -config.COURT_WIDTH_M/4, 0, 0)
         if config.ENABLE_BLUE_ROBOT:
-            blue_initial_x = const.COURT_WIDTH_M/4 if config.ENABLE_YELLOW_ROBOT else 0
+            blue_initial_x = config.COURT_WIDTH_M/4 if config.ENABLE_YELLOW_ROBOT else 0
             self.robots["blue"] = SimulatedRobot(
                 0, "blue", blue_initial_x, 0, 180)
 
@@ -82,9 +71,9 @@ class Simulator:
         effective_height = self.current_screen_height_px - \
             2 * self.current_screen_padding_px
 
-        if const.COURT_WIDTH_M > 0 and const.COURT_HEIGHT_M > 0 and effective_width > 0 and effective_height > 0:
-            ppm_w = effective_width / const.COURT_WIDTH_M
-            ppm_h = effective_height / const.COURT_HEIGHT_M
+        if config.COURT_WIDTH_M > 0 and config.COURT_HEIGHT_M > 0 and effective_width > 0 and effective_height > 0:
+            ppm_w = effective_width / config.COURT_WIDTH_M
+            ppm_h = effective_height / config.COURT_HEIGHT_M
             self.current_pixels_per_meter = min(ppm_w, ppm_h)
         else:
             self.current_pixels_per_meter = 1.0
@@ -111,8 +100,8 @@ class Simulator:
                     if event.button == 1:
                         wx, wy = self.screen_to_world_pos(*event.pos)
 
-                        h_court_w = const.COURT_WIDTH_M / 2.0 - self.ball.radius_m
-                        h_court_h = const.COURT_HEIGHT_M / 2.0 - self.ball.radius_m
+                        h_court_w = config.COURT_WIDTH_M / 2.0 - self.ball.radius_m
+                        h_court_h = config.COURT_HEIGHT_M / 2.0 - self.ball.radius_m
 
                         clamped_wx = max(-h_court_w, min(wx, h_court_w))
                         clamped_wy = max(-h_court_h, min(wy, h_court_h))
@@ -151,40 +140,40 @@ class Simulator:
                 self.last_sensor_send_time = current_time
 
             self.draw()
-            self.clock.tick(const.FPS)
+            self.clock.tick(config.FPS)
 
         self.cleanup()
 
     def draw_field(self):
-        self.screen.fill(const.COLOR_BACKGROUND)
-        hw_m, hh_m = const.COURT_WIDTH_M / 2.0, const.COURT_HEIGHT_M / 2.0
+        self.screen.fill(config.COLOR_BACKGROUND)
+        hw_m, hh_m = config.COURT_WIDTH_M / 2.0, config.COURT_HEIGHT_M / 2.0
 
         tl_sx, tl_sy = self.world_to_screen_pos(-hw_m, hh_m)
-        field_w_px = max(1, int(const.COURT_WIDTH_M *
+        field_w_px = max(1, int(config.COURT_WIDTH_M *
                          self.current_pixels_per_meter))
-        field_h_px = max(1, int(const.COURT_HEIGHT_M *
+        field_h_px = max(1, int(config.COURT_HEIGHT_M *
                          self.current_pixels_per_meter))
 
         field_rect = pygame.Rect(tl_sx, tl_sy, field_w_px, field_h_px)
-        pygame.draw.rect(self.screen, const.COLOR_FIELD_LINES,
-                         field_rect, const.FIELD_MARKING_WIDTH_PX)
+        pygame.draw.rect(self.screen, config.COLOR_FIELD_LINES,
+                         field_rect, config.FIELD_MARKING_WIDTH_PX)
 
         cx_s, cy_s = self.world_to_screen_pos(0, 0)
         center_circle_radius_m = 0.25
         cc_r_px = int(center_circle_radius_m * self.current_pixels_per_meter)
         if cc_r_px > 0:
-            pygame.draw.circle(self.screen, const.COLOR_FIELD_LINES,
-                               (cx_s, cy_s), cc_r_px, const.FIELD_MARKING_WIDTH_PX)
+            pygame.draw.circle(self.screen, config.COLOR_FIELD_LINES,
+                               (cx_s, cy_s), cc_r_px, config.FIELD_MARKING_WIDTH_PX)
 
         cl_top_s = self.world_to_screen_pos(0, hh_m)
         cl_bot_s = self.world_to_screen_pos(0, -hh_m)
-        pygame.draw.line(self.screen, const.COLOR_FIELD_LINES,
-                         cl_top_s, cl_bot_s, const.FIELD_MARKING_WIDTH_PX)
+        pygame.draw.line(self.screen, config.COLOR_FIELD_LINES,
+                         cl_top_s, cl_bot_s, config.FIELD_MARKING_WIDTH_PX)
 
     def draw_hud(self):
         y_offset = 10
         sim_fps_text = f"Sim FPS: {self.clock.get_fps():.1f}"
-        surf_fps = self.font.render(sim_fps_text, True, const.COLOR_TEXT)
+        surf_fps = self.font.render(sim_fps_text, True, config.COLOR_TEXT)
         self.screen.blit(
             surf_fps, (self.current_screen_width_px - surf_fps.get_width() - 10, y_offset))
 
