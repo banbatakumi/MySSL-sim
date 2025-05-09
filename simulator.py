@@ -30,20 +30,35 @@ class Simulator:
         self.show_debug_vectors = False
 
         self.robots: dict[str, SimulatedRobot] = {}
-        if config.ENABLE_YELLOW_ROBOT_0:
-            self.robots["yellow_0"] = SimulatedRobot(
-                "yellow", -config.COURT_WIDTH_M/4, 0, 0)
-        if config.ENABLE_YELLOW_ROBOT_1:
-            self.robots["yellow_1"] = SimulatedRobot(
-                "yellow", -config.COURT_WIDTH_M/4, 0, 0)
-        if config.ENABLE_BLUE_ROBOT_0:
-            self.robots["blue_0"] = SimulatedRobot(
-                "blue", config.COURT_WIDTH_M/4, 0, 0)
-        if config.ENABLE_BLUE_ROBOT_1:
-            self.robots["blue_1"] = SimulatedRobot(
-                "blue", config.COURT_WIDTH_M/4, 0, 0)
+
+        # 黄色ロボットの初期化
+        for robot_conf in config.YELLOW_ROBOTS_CONFIG:
+            if robot_conf["enabled"]:
+                robot_id_str = f"yellow_{robot_conf['id']}"
+                self.robots[robot_id_str] = SimulatedRobot(
+                    "yellow",
+                    robot_conf["initial_pos_x_m"],
+                    robot_conf["initial_pos_y_m"],
+                    robot_conf["initial_angle_deg"]
+                )
+                print(
+                    f"ロボット {robot_id_str} を初期位置 ({robot_conf['initial_pos_x_m']:.2f}, {robot_conf['initial_pos_y_m']:.2f}) で有効化")
+
+        # 青色ロボットの初期化
+        for robot_conf in config.BLUE_ROBOTS_CONFIG:
+            if robot_conf["enabled"]:
+                robot_id_str = f"blue_{robot_conf['id']}"
+                self.robots[robot_id_str] = SimulatedRobot(
+                    "blue",
+                    robot_conf["initial_pos_x_m"],
+                    robot_conf["initial_pos_y_m"],
+                    robot_conf["initial_angle_deg"]
+                )
+                print(
+                    f"ロボット {robot_id_str} を初期位置 ({robot_conf['initial_pos_x_m']:.2f}, {robot_conf['initial_pos_y_m']:.2f}) で有効化")
 
         self.ball: SimulatedBall = SimulatedBall(0, 0)
+        # UDPハンドラに渡すのは、実際にインスタンス化されたロボットの辞書
         self.udp_handler: SimulatorUDP = SimulatorUDP(
             self.robots, self.ball, self)
 
@@ -138,7 +153,6 @@ class Simulator:
 
             for robot in self.robots.values():
                 robot.update_physics(dt, self.ball)
-            # ボールの物理演算は sim_ball.py で壁の情報を参照して行われる
             self.ball.update_physics(dt)
 
             current_time_for_send = time.time()
@@ -155,10 +169,7 @@ class Simulator:
         self.cleanup()
 
     def draw_field(self):
-        # 1. 画面全体をフィールドの背景色 (緑) で塗りつぶす
         self.screen.fill(config.COLOR_BACKGROUND)
-
-        # 2. コートの白線を描画
         hw_m, hh_m = config.COURT_WIDTH_M / 2.0, config.COURT_HEIGHT_M / 2.0
         tl_lines_sx, tl_lines_sy = self.world_to_screen_pos(-hw_m, hh_m)
         field_lines_w_px = max(
@@ -172,7 +183,6 @@ class Simulator:
                               field_lines_w_px, field_lines_h_px),
                              config.FIELD_MARKING_WIDTH_PX)
 
-        # センターサークル
         cx_s, cy_s = self.world_to_screen_pos(0, 0)
         center_circle_radius_m = 0.25
         cc_r_px = int(center_circle_radius_m * self.current_pixels_per_meter)
@@ -183,25 +193,17 @@ class Simulator:
             pygame.draw.circle(
                 self.screen, config.COLOR_FIELD_LINES, (cx_s, cy_s), cc_r_px)
 
-        # センターライン
         cl_top_s = self.world_to_screen_pos(0, hh_m)
         cl_bot_s = self.world_to_screen_pos(0, -hh_m)
         pygame.draw.line(self.screen, config.COLOR_FIELD_LINES,
                          cl_top_s, cl_bot_s, config.FIELD_MARKING_WIDTH_PX)
 
-        # 3. 壁のラインを描画 (白線の外側 params.WALL_OFFSET_M の位置に黒線)
-        wall_line_thickness_px = config.WALL_LINE_WIDTH_PX  # 壁ラインの太さ
-
-        # 壁ラインのY座標 (ワールド単位)
+        wall_line_thickness_px = config.WALL_LINE_WIDTH_PX
         wall_top_y_m = config.COURT_HEIGHT_M / 2.0 + params.WALL_OFFSET_M
         wall_bottom_y_m = - (config.COURT_HEIGHT_M /
                              2.0 + params.WALL_OFFSET_M)
-        # 壁ラインのX座標 (ワールド単位)
         wall_left_x_m = - (config.COURT_WIDTH_M / 2.0 + params.WALL_OFFSET_M)
         wall_right_x_m = config.COURT_WIDTH_M / 2.0 + params.WALL_OFFSET_M
-
-        # スクリーン座標に変換
-        # 水平な壁ラインの端点
         wall_top_left_s = self.world_to_screen_pos(wall_left_x_m, wall_top_y_m)
         wall_top_right_s = self.world_to_screen_pos(
             wall_right_x_m, wall_top_y_m)
@@ -210,20 +212,12 @@ class Simulator:
         wall_bottom_right_s = self.world_to_screen_pos(
             wall_right_x_m, wall_bottom_y_m)
 
-        # 垂直な壁ラインの端点 (Y座標は上記と同じものを使う)
-        # 左の壁: (wall_left_x_m, wall_top_y_m) -> (wall_left_x_m, wall_bottom_y_m)
-        # 右の壁: (wall_right_x_m, wall_top_y_m) -> (wall_right_x_m, wall_bottom_y_m)
-
-        # 上の壁ライン
         pygame.draw.line(self.screen, config.COLOR_WALLS,
                          wall_top_left_s, wall_top_right_s, wall_line_thickness_px)
-        # 下の壁ライン
         pygame.draw.line(self.screen, config.COLOR_WALLS, wall_bottom_left_s,
                          wall_bottom_right_s, wall_line_thickness_px)
-        # 左の壁ライン
         pygame.draw.line(self.screen, config.COLOR_WALLS,
                          wall_top_left_s, wall_bottom_left_s, wall_line_thickness_px)
-        # 右の壁ライン
         pygame.draw.line(self.screen, config.COLOR_WALLS, wall_top_right_s,
                          wall_bottom_right_s, wall_line_thickness_px)
 
@@ -251,7 +245,17 @@ class Simulator:
 
 if __name__ == "__main__":
     print("ロボットサッカーシミュレータを開始しています...")
-    if not (config.ENABLE_YELLOW_ROBOT_0 or config.ENABLE_YELLOW_ROBOT_1):
+
+    # 有効なロボットがいるかどうかのチェック
+    num_enabled_robots = 0
+    for conf in config.YELLOW_ROBOTS_CONFIG:
+        if conf["enabled"]:
+            num_enabled_robots += 1
+    for conf in config.BLUE_ROBOTS_CONFIG:
+        if conf["enabled"]:
+            num_enabled_robots += 1
+
+    if num_enabled_robots == 0:
         print("警告: config.py で有効なロボットがありません。シミュレータは実行されますが、ロボットは制御されません。")
 
     sim = Simulator()
