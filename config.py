@@ -33,7 +33,7 @@ YELLOW_ROBOTS_CONFIG = [
         "command_listen_port": 50008,
         "sensor_send_port": 50009,
         "enabled": True,
-        "initial_pos_x_m": -1.5 / 4,  # コート幅の1/4 左
+        "initial_pos_x_m": -0.4,  # コート幅の1/4 左
         "initial_pos_y_m": 0.0,
         "initial_angle_deg": 0.0
     },
@@ -43,8 +43,8 @@ YELLOW_ROBOTS_CONFIG = [
         "command_listen_port": 50012,
         "sensor_send_port": 50010,
         "enabled": True,
-        "initial_pos_x_m": -1.5 / 4 + 0.1,  # 少しずらす例
-        "initial_pos_y_m": 0.1,
+        "initial_pos_x_m": -0.6,  # 少しずらす例
+        "initial_pos_y_m": 0,
         "initial_angle_deg": 0.0
     },
     # 必要に応じてロボットを追加

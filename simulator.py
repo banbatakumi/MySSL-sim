@@ -6,6 +6,7 @@ import sim_params as params
 import pygame
 import time
 import sys
+import math  # math.hypot, math.sqrt のために追加
 
 
 class Simulator:
@@ -21,13 +22,13 @@ class Simulator:
             (self.current_screen_width_px, self.current_screen_height_px),
             pygame.RESIZABLE
         )
-        self._update_drawing_parameters()
+        self._update_drawing_parameters()  # 描画パラメータを更新
 
         pygame.display.set_caption("SSLシミュレータ")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("monospace", 16)
         self.running = True
-        self.show_debug_vectors = False
+        self.show_debug_vectors = False  # デバッグベクトルの表示フラグ
 
         self.robots: dict[str, SimulatedRobot] = {}
 
@@ -39,7 +40,7 @@ class Simulator:
                     "yellow",
                     robot_conf["initial_pos_x_m"],
                     robot_conf["initial_pos_y_m"],
-                    robot_conf["initial_angle_deg"]
+                    robot_conf["initial_angle_deg"]  # configの角度もCW正と解釈
                 )
                 print(
                     f"ロボット {robot_id_str} を初期位置 ({robot_conf['initial_pos_x_m']:.2f}, {robot_conf['initial_pos_y_m']:.2f}) で有効化")
@@ -52,7 +53,7 @@ class Simulator:
                     "blue",
                     robot_conf["initial_pos_x_m"],
                     robot_conf["initial_pos_y_m"],
-                    robot_conf["initial_angle_deg"]
+                    robot_conf["initial_angle_deg"]  # configの角度もCW正と解釈
                 )
                 print(
                     f"ロボット {robot_id_str} を初期位置 ({robot_conf['initial_pos_x_m']:.2f}, {robot_conf['initial_pos_y_m']:.2f}) で有効化")
@@ -62,27 +63,31 @@ class Simulator:
         self.udp_handler: SimulatorUDP = SimulatorUDP(
             self.robots, self.ball, self)
 
-        self.last_vision_send_time = 0
-        self.last_sensor_send_time = 0
-        self.data_send_interval = config.CONTROL_LOOP_INTERVAL
+        self.last_vision_send_time = 0  # 最後にVisionデータを送信した時刻
+        self.last_sensor_send_time = 0  # 最後にセンサーデータを送信した時刻
+        self.data_send_interval = config.CONTROL_LOOP_INTERVAL  # データ送信間隔
 
     def world_to_screen_pos(self, x_m: float, y_m: float) -> tuple[int, int]:
+        # ワールド座標(Y軸上向き)をスクリーン座標(Y軸下向き)に変換
         center_x_px = self.current_screen_width_px / 2
         center_y_px = self.current_screen_height_px / 2
         screen_x = center_x_px + x_m * self.current_pixels_per_meter
-        screen_y = center_y_px - y_m * self.current_pixels_per_meter
+        screen_y = center_y_px - y_m * self.current_pixels_per_meter  # Y軸反転
         return int(screen_x), int(screen_y)
 
     def screen_to_world_pos(self, screen_x_px: int, screen_y_px: int) -> tuple[float, float]:
+        # スクリーン座標(Y軸下向き)をワールド座標(Y軸上向き)に変換
         center_x_px = self.current_screen_width_px / 2
         center_y_px = self.current_screen_height_px / 2
         if self.current_pixels_per_meter == 0:
             return 0.0, 0.0
         world_x_m = (screen_x_px - center_x_px) / self.current_pixels_per_meter
-        world_y_m = (center_y_px - screen_y_px) / self.current_pixels_per_meter
+        world_y_m = (center_y_px - screen_y_px) / \
+            self.current_pixels_per_meter  # Y軸反転
         return world_x_m, world_y_m
 
     def _update_drawing_parameters(self):
+        # スクリーンサイズ変更時に描画関連のパラメータを更新
         self.current_screen_width_px = self.screen.get_width()
         self.current_screen_height_px = self.screen.get_height()
 
@@ -99,10 +104,79 @@ class Simulator:
             ppm_h = effective_height_px / world_display_height_m
             self.current_pixels_per_meter = min(ppm_w, ppm_h)
         else:
-            self.current_pixels_per_meter = 1.0
+            self.current_pixels_per_meter = 1.0  # フォールバック
 
         if self.current_pixels_per_meter <= 0:
-            self.current_pixels_per_meter = 1.0
+            self.current_pixels_per_meter = 1.0  # フォールバック
+
+    def resolve_robot_collisions(self, dt: float, num_iterations=5):
+        # ロボット同士の衝突解決処理
+        robots_list = list(self.robots.values())
+        num_robots = len(robots_list)
+        restitution_coeff = params.ROBOT_ROBOT_RESTITUTION_COEFF  # 反発係数
+
+        for _ in range(num_iterations):  # 安定性のために複数回イテレーション
+            collision_occurred_in_iteration = False
+            for i in range(num_robots):
+                robot1 = robots_list[i]
+                for j in range(i + 1, num_robots):
+                    robot2 = robots_list[j]
+
+                    dx = robot2.x_m - robot1.x_m
+                    dy = robot2.y_m - robot1.y_m
+                    dist_sq = dx*dx + dy*dy
+
+                    sum_radii = robot1.radius_m + robot2.radius_m
+
+                    # 衝突チェック (dist_sq > 0 は完全に一致している場合の問題を避けるため)
+                    if dist_sq < sum_radii * sum_radii and dist_sq > 1e-9:  # 衝突発生
+                        collision_occurred_in_iteration = True
+                        dist = math.sqrt(dist_sq)
+
+                        # 1. オーバーラップの解決
+                        overlap = sum_radii - dist
+
+                        # 正規化された衝突ベクトル (robot1 から robot2 へ)
+                        nx = dx / dist
+                        ny = dy / dist
+
+                        # 各ロボットをオーバーラップの半分だけ移動させる (質量比例も可能だが単純化)
+                        move_dist_each = overlap / 2.0
+                        robot1.x_m -= nx * move_dist_each
+                        robot1.y_m -= ny * move_dist_each
+                        robot2.x_m += nx * move_dist_each
+                        robot2.y_m += ny * move_dist_each
+
+                        # 2. 衝突応答 (速度)
+                        # 相対速度
+                        rvx = robot2.vx_mps - robot1.vx_mps
+                        rvy = robot2.vy_mps - robot1.vy_mps
+
+                        # 法線方向の速度成分 (ベクトル r1->r2)
+                        vel_along_normal = rvx * nx + rvy * ny
+
+                        # 速度が離れる方向の場合は解決しない (vel_along_normal > 0)
+                        if vel_along_normal > 0:
+                            continue
+
+                        m1 = robot1.mass_kg
+                        m2 = robot2.mass_kg
+
+                        # 力積スカラー (j) を計算
+                        impulse_j = -(1 + restitution_coeff) * vel_along_normal
+                        impulse_j /= (1/m1 + 1/m2)  # 有効質量
+
+                        # 力積を適用
+                        impulse_x = impulse_j * nx
+                        impulse_y = impulse_j * ny
+
+                        robot1.vx_mps -= impulse_x / m1
+                        robot1.vy_mps -= impulse_y / m1
+                        robot2.vx_mps += impulse_x / m2
+                        robot2.vy_mps += impulse_y / m2
+
+            if not collision_occurred_in_iteration:
+                break  # このステップでの全ての衝突が解決された
 
     def run(self):
         last_time = time.time()
@@ -119,9 +193,10 @@ class Simulator:
                         (event.w, event.h), pygame.RESIZABLE)
                     self._update_drawing_parameters()
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:
+                    if event.button == 1:  # 左クリック
                         wx, wy = self.screen_to_world_pos(*event.pos)
 
+                        # ボール配置境界 (ボールの壁衝突境界と同じ)
                         h_wall_boundary_w = config.COURT_WIDTH_M / 2.0 + \
                             params.WALL_OFFSET_M - self.ball.radius_m
                         h_wall_boundary_h = config.COURT_HEIGHT_M / 2.0 + \
@@ -137,24 +212,36 @@ class Simulator:
                         self.ball.x_m, self.ball.y_m = clamped_wx, clamped_wy
                         self.ball.vx_mps, self.ball.vy_mps = 0.0, 0.0
                 elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_r:
+                    if event.key == pygame.K_r:  # ボールリセット
                         if self.ball.is_dribbled_by:
                             self.ball.stop_dribble()
                         self.ball = SimulatedBall(0, 0)
-                        self.udp_handler.ball = self.ball
-                    elif event.key == pygame.K_m:
+                        self.udp_handler.ball = self.ball  # UDPハンドラのボール参照を更新
+                    elif event.key == pygame.K_m:  # デバッグベクトルの表示切り替え
                         self.show_debug_vectors = not self.show_debug_vectors
                     elif event.key == pygame.K_ESCAPE:
                         self.running = False
 
-            if dt <= 0:
-                time.sleep(0.001)
+            if dt <= 0:  # dtが0以下の場合の問題を回避
+                time.sleep(0.001)  # dtが0の場合のビジーループを防ぐために小スリープ
                 continue
 
+            # 1. ロボットの内部状態を更新 (コマンドからの運動、ボールとの相互作用)
             for robot in self.robots.values():
                 robot.update_physics(dt, self.ball)
+
+            # 2. ロボット同士の衝突を解決 (位置と速度を調整)
+            if len(self.robots) > 1:  # ロボットが複数いる場合のみ
+                self.resolve_robot_collisions(dt)
+
+            # 3. ロボットにコート境界を適用 (壁に対する最終的な位置/速度調整)
+            for robot in self.robots.values():
+                robot.apply_court_boundaries()
+
+            # 4. ボールの物理演算を更新 (最終的なロボット位置と相互作用可能)
             self.ball.update_physics(dt)
 
+            # 設定された間隔でデータを送信
             current_time_for_send = time.time()
             if current_time_for_send - self.last_vision_send_time >= self.data_send_interval:
                 self.udp_handler.send_vision_data()
@@ -163,15 +250,17 @@ class Simulator:
                 self.udp_handler.send_sensor_data()
                 self.last_sensor_send_time = current_time_for_send
 
-            self.draw()
-            self.clock.tick(config.FPS)
+            self.draw()  # 描画処理
+            self.clock.tick(config.FPS)  # FPS制御
 
-        self.cleanup()
+        self.cleanup()  # 終了処理
 
     def draw_field(self):
-        self.screen.fill(config.COLOR_BACKGROUND)
-        hw_m, hh_m = config.COURT_WIDTH_M / 2.0, config.COURT_HEIGHT_M / 2.0
+        self.screen.fill(config.COLOR_BACKGROUND)  # 背景色で塗りつぶし
+        hw_m, hh_m = config.COURT_WIDTH_M / 2.0, config.COURT_HEIGHT_M / 2.0  # コート半幅、半高
+        # フィールドラインの左上スクリーン座標
         tl_lines_sx, tl_lines_sy = self.world_to_screen_pos(-hw_m, hh_m)
+        # フィールドラインの幅と高さ (ピクセル)
         field_lines_w_px = max(
             1, int(config.COURT_WIDTH_M * self.current_pixels_per_meter))
         field_lines_h_px = max(
@@ -181,23 +270,26 @@ class Simulator:
             pygame.draw.rect(self.screen, config.COLOR_FIELD_LINES,
                              (tl_lines_sx, tl_lines_sy,
                               field_lines_w_px, field_lines_h_px),
-                             config.FIELD_MARKING_WIDTH_PX)
+                             config.FIELD_MARKING_WIDTH_PX)  # フィールド外枠
 
-        cx_s, cy_s = self.world_to_screen_pos(0, 0)
-        center_circle_radius_m = 0.25
+        # センターサークル
+        cx_s, cy_s = self.world_to_screen_pos(0, 0)  # 中心点
+        center_circle_radius_m = 0.25  # SSLセンターサークル半径
         cc_r_px = int(center_circle_radius_m * self.current_pixels_per_meter)
         if cc_r_px >= config.FIELD_MARKING_WIDTH_PX:
             pygame.draw.circle(self.screen, config.COLOR_FIELD_LINES,
                                (cx_s, cy_s), cc_r_px, config.FIELD_MARKING_WIDTH_PX)
-        elif cc_r_px > 0:
+        elif cc_r_px > 0:  # 線幅が太すぎる場合は塗りつぶし
             pygame.draw.circle(
                 self.screen, config.COLOR_FIELD_LINES, (cx_s, cy_s), cc_r_px)
 
+        # センターライン
         cl_top_s = self.world_to_screen_pos(0, hh_m)
         cl_bot_s = self.world_to_screen_pos(0, -hh_m)
         pygame.draw.line(self.screen, config.COLOR_FIELD_LINES,
                          cl_top_s, cl_bot_s, config.FIELD_MARKING_WIDTH_PX)
 
+        # 壁 (フィールドラインから WALL_OFFSET_M 外側)
         wall_line_thickness_px = config.WALL_LINE_WIDTH_PX
         wall_top_y_m = config.COURT_HEIGHT_M / 2.0 + params.WALL_OFFSET_M
         wall_bottom_y_m = - (config.COURT_HEIGHT_M /
@@ -222,6 +314,7 @@ class Simulator:
                          wall_bottom_right_s, wall_line_thickness_px)
 
     def draw_hud(self):
+        # HUD (Heads-Up Display) の描画 (FPSなど)
         y_offset = 10
         sim_fps_text = f"Sim FPS: {self.clock.get_fps():.1f}"
         surf_fps = self.font.render(sim_fps_text, True, config.COLOR_TEXT)
@@ -229,14 +322,16 @@ class Simulator:
             surf_fps, (self.current_screen_width_px - surf_fps.get_width() - 10, y_offset))
 
     def draw(self):
+        # 全描画処理の呼び出し
         self.draw_field()
         for robot in self.robots.values():
             robot.draw(self.screen, self)
         self.ball.draw(self.screen, self)
         self.draw_hud()
-        pygame.display.flip()
+        pygame.display.flip()  # 画面更新
 
     def cleanup(self):
+        # 終了時のクリーンアップ処理
         print("シミュレータをシャットダウンしています...")
         self.udp_handler.stop()
         pygame.quit()
