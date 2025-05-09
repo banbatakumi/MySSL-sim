@@ -23,7 +23,7 @@ BALL_RADIUS_M = 0.0215  # ボールの半径 (メートル)
 BALL_FRICTION_COEFF = 0.1  # ボールの摩擦係数
 GRAVITY_MPSS = 9.81  # 重力加速度 (メートル/秒^2)
 
-SENSOR_FOV_HALF_ANGLE_RAD = math.radians(40)  # センサーの視野角の半分 (ラジアン)
+SENSOR_FOV_HALF_ANGLE_RAD = math.radians(20)  # センサーの視野角の半分 (ラジアン)
 
 # --- コートと壁のパラメータ ---
 WALL_OFFSET_M = 0.20  # コートの白線から壁までのオフセット距離 (メートル)

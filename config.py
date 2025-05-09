@@ -3,12 +3,12 @@
 VISION_LISTEN_PORT = 50007
 
 # ロボットコマンドの受信ポート (シミュレータがリッスン)
-YELLOW_SEND_PORT = 50008  # 歴史的経緯でSENDだが、シミュレータ側は受信
-BLUE_SEND_PORT = 50012   # 歴史的経緯でSENDだが、シミュレータ側は受信
+YELLOW_ROBOT_0_SEND_PORT = 50008  # 歴史的経緯でSENDだが、シミュレータ側は受信
+YELLOW_ROBOT_1_SEND_PORT = 50012   # 歴史的経緯でSENDだが、シミュレータ側は受信
 
 # ロボットセンサーデータの送信ポート (シミュレータが送信、コントローラがリッスン)
-YELLOW_SENSOR_LISTEN_PORT = 50009
-BLUE_SENSOR_LISTEN_PORT = 50010
+ROBOT_0_SENSOR_LISTEN_PORT = 50009
+ROBOT_1_SENSOR_LISTEN_PORT = 50010
 
 # 待ち受けIPアドレス: 通常は '0.0.0.0' (すべてのインターフェースで待機)
 LISTEN_IP = "0.0.0.0"
@@ -19,8 +19,10 @@ LISTEN_IP = "0.0.0.0"
 ROBOT_LOCAL_IP = "127.0.0.1"  # これはコマンド送信元の想定だが、現状あまり使われていない
 
 # 有効にするロボットの設定 (True/False で切り替え)
-ENABLE_YELLOW_ROBOT = True
-ENABLE_BLUE_ROBOT = False
+ENABLE_YELLOW_ROBOT_0 = False
+ENABLE_YELLOW_ROBOT_1 = True
+ENABLE_BLUE_ROBOT_0 = False
+ENABLE_BLUE_ROBOT_1 = False
 
 # 受信バッファサイズ
 BUFFER_SIZE = 65536
@@ -34,16 +36,19 @@ COURT_HEIGHT_M = 1.0  # コートの高さ (メートル) - 白線間の距離
 
 # --- 初期描画定数 (ウィンドウサイズ変更時に更新) ---
 INITIAL_PIXELS_PER_METER = 300  # 初期スケール (ピクセル/メートル)
-INITIAL_SCREEN_PADDING_PX = 50  # 初期画面の余白 (ピクセル)
+INITIAL_SCREEN_PADDING_PX = 10  # 初期画面の余白 (ピクセル)
 INITIAL_SCREEN_WIDTH_PX = int(
+    # 注意: これは WALL_OFFSET を考慮していない初期値
     COURT_WIDTH_M * INITIAL_PIXELS_PER_METER) + 2 * INITIAL_SCREEN_PADDING_PX
 INITIAL_SCREEN_HEIGHT_PX = int(COURT_HEIGHT_M * INITIAL_PIXELS_PER_METER) + \
-    2 * INITIAL_SCREEN_PADDING_PX
+    2 * INITIAL_SCREEN_PADDING_PX  # 注意: これは WALL_OFFSET を考慮していない初期値
 
 FIELD_MARKING_WIDTH_PX = 2  # フィールドラインの幅 (ピクセル)
 ROBOT_OUTLINE_WIDTH_PX = 2  # ロボットの輪郭線の幅 (ピクセル)
+WALL_LINE_WIDTH_PX = 4  # 壁ラインの幅 (ピクセル)
 
-COLOR_BACKGROUND = (0, 50, 0)  # 背景色
+COLOR_BACKGROUND = (0, 50, 0)  # 背景色 (フィールドの緑色)
+COLOR_WALLS = (0, 0, 0)  # 壁の色 (黒)
 COLOR_FIELD_LINES = (255, 255, 255)  # フィールドラインの色
 COLOR_YELLOW_ROBOT = (255, 255, 0)  # 黄色ロボットの色
 COLOR_BLUE_ROBOT = (0, 0, 255)  # 青色ロボットの色

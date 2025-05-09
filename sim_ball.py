@@ -30,7 +30,7 @@ class SimulatedBall:
             # ドリブラーはロボットの前面（半径の位置）にあると仮定
             # ボール中心は、ロボット中心から (ロボット半径 - ボール半径 * alpha) の位置に来るようにする
             # ここでは、ボールがロボットの表面に軽く接する程度に前面に保持されるように調整
-            dribbler_offset_m = robot.radius_m + self.radius_m * 0.1  # ロボット前面より少しだけ内側
+            dribbler_offset_m = robot.radius_m - self.radius_m * 0.2  # ロボット前面より少しだけ内側
 
             # ドリブル時の目標位置 (ロボットの前面)
             target_x = robot.x_m + dribbler_offset_m * \

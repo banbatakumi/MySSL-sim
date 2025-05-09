@@ -2,6 +2,7 @@ from sim_udp_handler import SimulatorUDP
 from sim_robot import SimulatedRobot
 from sim_ball import SimulatedBall
 import config
+import sim_params as params
 import pygame
 import time
 import sys
@@ -15,7 +16,6 @@ class Simulator:
         self.current_screen_width_px = config.INITIAL_SCREEN_WIDTH_PX
         self.current_screen_height_px = config.INITIAL_SCREEN_HEIGHT_PX
         self.current_screen_padding_px = config.INITIAL_SCREEN_PADDING_PX
-        self.current_pixels_per_meter = config.INITIAL_PIXELS_PER_METER
 
         self.screen: pygame.Surface = pygame.display.set_mode(
             (self.current_screen_width_px, self.current_screen_height_px),
@@ -23,20 +23,25 @@ class Simulator:
         )
         self._update_drawing_parameters()
 
-        pygame.display.set_caption("ロボットサッカーシミュレータ")
+        pygame.display.set_caption("SSLシミュレータ")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("monospace", 16)
         self.running = True
         self.show_debug_vectors = False
 
         self.robots: dict[str, SimulatedRobot] = {}
-        if config.ENABLE_YELLOW_ROBOT:
-            self.robots["yellow"] = SimulatedRobot(
-                0, "yellow", -config.COURT_WIDTH_M/4, 0, 0)
-        if config.ENABLE_BLUE_ROBOT:
-            blue_initial_x = config.COURT_WIDTH_M/4 if config.ENABLE_YELLOW_ROBOT else 0
-            self.robots["blue"] = SimulatedRobot(
-                0, "blue", blue_initial_x, 0, 180)
+        if config.ENABLE_YELLOW_ROBOT_0:
+            self.robots["yellow_0"] = SimulatedRobot(
+                "yellow", -config.COURT_WIDTH_M/4, 0, 0)
+        if config.ENABLE_YELLOW_ROBOT_1:
+            self.robots["yellow_1"] = SimulatedRobot(
+                "yellow", -config.COURT_WIDTH_M/4, 0, 0)
+        if config.ENABLE_BLUE_ROBOT_0:
+            self.robots["blue_0"] = SimulatedRobot(
+                "blue", config.COURT_WIDTH_M/4, 0, 0)
+        if config.ENABLE_BLUE_ROBOT_1:
+            self.robots["blue_1"] = SimulatedRobot(
+                "blue", config.COURT_WIDTH_M/4, 0, 0)
 
         self.ball: SimulatedBall = SimulatedBall(0, 0)
         self.udp_handler: SimulatorUDP = SimulatorUDP(
@@ -66,14 +71,17 @@ class Simulator:
         self.current_screen_width_px = self.screen.get_width()
         self.current_screen_height_px = self.screen.get_height()
 
-        effective_width = self.current_screen_width_px - \
+        effective_width_px = self.current_screen_width_px - \
             2 * self.current_screen_padding_px
-        effective_height = self.current_screen_height_px - \
+        effective_height_px = self.current_screen_height_px - \
             2 * self.current_screen_padding_px
 
-        if config.COURT_WIDTH_M > 0 and config.COURT_HEIGHT_M > 0 and effective_width > 0 and effective_height > 0:
-            ppm_w = effective_width / config.COURT_WIDTH_M
-            ppm_h = effective_height / config.COURT_HEIGHT_M
+        world_display_width_m = config.COURT_WIDTH_M + 2 * params.WALL_OFFSET_M
+        world_display_height_m = config.COURT_HEIGHT_M + 2 * params.WALL_OFFSET_M
+
+        if world_display_width_m > 0 and world_display_height_m > 0 and effective_width_px > 0 and effective_height_px > 0:
+            ppm_w = effective_width_px / world_display_width_m
+            ppm_h = effective_height_px / world_display_height_m
             self.current_pixels_per_meter = min(ppm_w, ppm_h)
         else:
             self.current_pixels_per_meter = 1.0
@@ -82,7 +90,6 @@ class Simulator:
             self.current_pixels_per_meter = 1.0
 
     def run(self):
-        accumulated_time = 0.0  # シミュレーションの累積時間
         last_time = time.time()
         while self.running:
             current_time = time.time()
@@ -100,11 +107,15 @@ class Simulator:
                     if event.button == 1:
                         wx, wy = self.screen_to_world_pos(*event.pos)
 
-                        h_court_w = config.COURT_WIDTH_M / 2.0 - self.ball.radius_m
-                        h_court_h = config.COURT_HEIGHT_M / 2.0 - self.ball.radius_m
+                        h_wall_boundary_w = config.COURT_WIDTH_M / 2.0 + \
+                            params.WALL_OFFSET_M - self.ball.radius_m
+                        h_wall_boundary_h = config.COURT_HEIGHT_M / 2.0 + \
+                            params.WALL_OFFSET_M - self.ball.radius_m
 
-                        clamped_wx = max(-h_court_w, min(wx, h_court_w))
-                        clamped_wy = max(-h_court_h, min(wy, h_court_h))
+                        clamped_wx = max(-h_wall_boundary_w,
+                                         min(wx, h_wall_boundary_w))
+                        clamped_wy = max(-h_wall_boundary_h,
+                                         min(wy, h_wall_boundary_h))
 
                         if self.ball.is_dribbled_by:
                             self.ball.stop_dribble()
@@ -122,22 +133,21 @@ class Simulator:
                         self.running = False
 
             if dt <= 0:
-                time.sleep(0.01)
+                time.sleep(0.001)
                 continue
 
             for robot in self.robots.values():
                 robot.update_physics(dt, self.ball)
+            # ボールの物理演算は sim_ball.py で壁の情報を参照して行われる
             self.ball.update_physics(dt)
 
-            current_time = time.time()
-            # データ送信はudp_handler内部のロジックで遅延制御されるので、
-            # ここでは一定間隔で送信関数を呼び出すだけで良い
-            if current_time - self.last_vision_send_time >= self.data_send_interval:
+            current_time_for_send = time.time()
+            if current_time_for_send - self.last_vision_send_time >= self.data_send_interval:
                 self.udp_handler.send_vision_data()
-                self.last_vision_send_time = current_time
-            if current_time - self.last_sensor_send_time >= self.data_send_interval:
+                self.last_vision_send_time = current_time_for_send
+            if current_time_for_send - self.last_sensor_send_time >= self.data_send_interval:
                 self.udp_handler.send_sensor_data()
-                self.last_sensor_send_time = current_time
+                self.last_sensor_send_time = current_time_for_send
 
             self.draw()
             self.clock.tick(config.FPS)
@@ -145,30 +155,77 @@ class Simulator:
         self.cleanup()
 
     def draw_field(self):
+        # 1. 画面全体をフィールドの背景色 (緑) で塗りつぶす
         self.screen.fill(config.COLOR_BACKGROUND)
+
+        # 2. コートの白線を描画
         hw_m, hh_m = config.COURT_WIDTH_M / 2.0, config.COURT_HEIGHT_M / 2.0
+        tl_lines_sx, tl_lines_sy = self.world_to_screen_pos(-hw_m, hh_m)
+        field_lines_w_px = max(
+            1, int(config.COURT_WIDTH_M * self.current_pixels_per_meter))
+        field_lines_h_px = max(
+            1, int(config.COURT_HEIGHT_M * self.current_pixels_per_meter))
 
-        tl_sx, tl_sy = self.world_to_screen_pos(-hw_m, hh_m)
-        field_w_px = max(1, int(config.COURT_WIDTH_M *
-                         self.current_pixels_per_meter))
-        field_h_px = max(1, int(config.COURT_HEIGHT_M *
-                         self.current_pixels_per_meter))
+        if field_lines_w_px > 0 and field_lines_h_px > 0:
+            pygame.draw.rect(self.screen, config.COLOR_FIELD_LINES,
+                             (tl_lines_sx, tl_lines_sy,
+                              field_lines_w_px, field_lines_h_px),
+                             config.FIELD_MARKING_WIDTH_PX)
 
-        field_rect = pygame.Rect(tl_sx, tl_sy, field_w_px, field_h_px)
-        pygame.draw.rect(self.screen, config.COLOR_FIELD_LINES,
-                         field_rect, config.FIELD_MARKING_WIDTH_PX)
-
+        # センターサークル
         cx_s, cy_s = self.world_to_screen_pos(0, 0)
         center_circle_radius_m = 0.25
         cc_r_px = int(center_circle_radius_m * self.current_pixels_per_meter)
-        if cc_r_px > 0:
+        if cc_r_px >= config.FIELD_MARKING_WIDTH_PX:
             pygame.draw.circle(self.screen, config.COLOR_FIELD_LINES,
                                (cx_s, cy_s), cc_r_px, config.FIELD_MARKING_WIDTH_PX)
+        elif cc_r_px > 0:
+            pygame.draw.circle(
+                self.screen, config.COLOR_FIELD_LINES, (cx_s, cy_s), cc_r_px)
 
+        # センターライン
         cl_top_s = self.world_to_screen_pos(0, hh_m)
         cl_bot_s = self.world_to_screen_pos(0, -hh_m)
         pygame.draw.line(self.screen, config.COLOR_FIELD_LINES,
                          cl_top_s, cl_bot_s, config.FIELD_MARKING_WIDTH_PX)
+
+        # 3. 壁のラインを描画 (白線の外側 params.WALL_OFFSET_M の位置に黒線)
+        wall_line_thickness_px = config.WALL_LINE_WIDTH_PX  # 壁ラインの太さ
+
+        # 壁ラインのY座標 (ワールド単位)
+        wall_top_y_m = config.COURT_HEIGHT_M / 2.0 + params.WALL_OFFSET_M
+        wall_bottom_y_m = - (config.COURT_HEIGHT_M /
+                             2.0 + params.WALL_OFFSET_M)
+        # 壁ラインのX座標 (ワールド単位)
+        wall_left_x_m = - (config.COURT_WIDTH_M / 2.0 + params.WALL_OFFSET_M)
+        wall_right_x_m = config.COURT_WIDTH_M / 2.0 + params.WALL_OFFSET_M
+
+        # スクリーン座標に変換
+        # 水平な壁ラインの端点
+        wall_top_left_s = self.world_to_screen_pos(wall_left_x_m, wall_top_y_m)
+        wall_top_right_s = self.world_to_screen_pos(
+            wall_right_x_m, wall_top_y_m)
+        wall_bottom_left_s = self.world_to_screen_pos(
+            wall_left_x_m, wall_bottom_y_m)
+        wall_bottom_right_s = self.world_to_screen_pos(
+            wall_right_x_m, wall_bottom_y_m)
+
+        # 垂直な壁ラインの端点 (Y座標は上記と同じものを使う)
+        # 左の壁: (wall_left_x_m, wall_top_y_m) -> (wall_left_x_m, wall_bottom_y_m)
+        # 右の壁: (wall_right_x_m, wall_top_y_m) -> (wall_right_x_m, wall_bottom_y_m)
+
+        # 上の壁ライン
+        pygame.draw.line(self.screen, config.COLOR_WALLS,
+                         wall_top_left_s, wall_top_right_s, wall_line_thickness_px)
+        # 下の壁ライン
+        pygame.draw.line(self.screen, config.COLOR_WALLS, wall_bottom_left_s,
+                         wall_bottom_right_s, wall_line_thickness_px)
+        # 左の壁ライン
+        pygame.draw.line(self.screen, config.COLOR_WALLS,
+                         wall_top_left_s, wall_bottom_left_s, wall_line_thickness_px)
+        # 右の壁ライン
+        pygame.draw.line(self.screen, config.COLOR_WALLS, wall_top_right_s,
+                         wall_bottom_right_s, wall_line_thickness_px)
 
     def draw_hud(self):
         y_offset = 10
@@ -194,7 +251,7 @@ class Simulator:
 
 if __name__ == "__main__":
     print("ロボットサッカーシミュレータを開始しています...")
-    if not (config.ENABLE_YELLOW_ROBOT or config.ENABLE_BLUE_ROBOT):
+    if not (config.ENABLE_YELLOW_ROBOT_0 or config.ENABLE_YELLOW_ROBOT_1):
         print("警告: config.py で有効なロボットがありません。シミュレータは実行されますが、ロボットは制御されません。")
 
     sim = Simulator()

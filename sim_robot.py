@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class SimulatedRobot:
-    def __init__(self, robot_id_num, color_name, initial_x_m, initial_y_m, initial_angle_deg, radius_m=params.ROBOT_RADIUS_M):
+    def __init__(self, color_name, initial_x_m, initial_y_m, initial_angle_deg, radius_m=params.ROBOT_RADIUS_M):
         self.color_name = color_name  # "yellow" または "blue"
         self.x_m = initial_x_m  # X座標 (メートル)
         self.y_m = initial_y_m  # Y座標 (メートル)
@@ -245,16 +245,28 @@ class SimulatedRobot:
             self.angle_rad = normalize_angle_rad(
                 initial_angle_rad_this_step + angle_rotation_this_step)  # 時計回り
 
+        # コートの境界処理
         half_court_width = config.COURT_WIDTH_M / 2.0
         half_court_height = config.COURT_HEIGHT_M / 2.0
-        self.x_m = max(-half_court_width + self.radius_m,
-                       min(self.x_m, half_court_width - self.radius_m))
-        self.y_m = max(-half_court_height + self.radius_m,
-                       min(self.y_m, half_court_height - self.radius_m))
+
+        # ロボットの中心が取りうるX座標の最小値
+        # コートの左端 (-half_court_width) から wall_clearance_m と robot_radius_m を足した位置
+        min_center_x = -half_court_width + self.radius_m - params.WALL_OFFSET_M
+        # ロボットの中心が取りうるX座標の最大値
+        # コートの右端 (half_court_width) から wall_clearance_m と robot_radius_m を引いた位置
+        max_center_x = half_court_width - self.radius_m + params.WALL_OFFSET_M
+
+        self.x_m = max(min_center_x, min(self.x_m, max_center_x))
+
+        # ロボットの中心が取りうるY座標の最小値
+        min_center_y = -half_court_height + self.radius_m - params.WALL_OFFSET_M
+        # ロボットの中心が取りうるY座標の最大値
+        max_center_y = half_court_height - self.radius_m + params.WALL_OFFSET_M
+
+        self.y_m = max(min_center_y, min(self.y_m, max_center_y))
 
     def get_vision_data(self):
         return {
-            "type": self.color_name,
             "angle": round(math.degrees(self.angle_rad), 2),
             "pos": (round(self.x_m * 100.0, 2), round(self.y_m * 100.0, 2))
         }
@@ -266,7 +278,7 @@ class SimulatedRobot:
         dx = ball.x_m - self.x_m
         dy = ball.y_m - self.y_m
         dist_center_to_center = math.hypot(dx, dy)
-        overlap_depth_m = params.BALL_RADIUS_M * 0.2  # params.BALL_RADIUS_M
+        overlap_depth_m = params.BALL_RADIUS_M * 0.1  # params.BALL_RADIUS_M
         dribbler_offset_m = self.radius_m - overlap_depth_m
 
         if dist_center_to_center <= dribbler_offset_m + 0.005:

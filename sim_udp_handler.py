@@ -32,34 +32,34 @@ class SimulatorUDP:
 
         # データ遅延用バッファ
         self.vision_data_buffer = collections.deque()
-        self.yellow_sensor_buffer = collections.deque()
-        self.blue_sensor_buffer = collections.deque()
+        self.yellow_robot_0_sensor_buffer = collections.deque()
+        self.yellow_robot_1_sensor_buffer = collections.deque()
 
         # 遅延時間設定
         self.vision_data_delay_s = params.VISION_DATA_DELAY_S
         self.robot_sensor_delay_s = params.ROBOT_SENSOR_DELAY_S
 
-        if config.ENABLE_YELLOW_ROBOT and "yellow" in self.robots:
+        if config.ENABLE_YELLOW_ROBOT_0 and "yellow_0" in self.robots:
             try:
-                ip, port = config.ROBOT_LOCAL_IP, config.YELLOW_SEND_PORT
+                ip, port = config.ROBOT_LOCAL_IP, config.YELLOW_ROBOT_0_SEND_PORT
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.bind((ip, port))
                 sock.settimeout(0.1)
-                self.cmd_sockets["yellow"] = sock
+                self.cmd_sockets["yellow_0"] = sock
                 print(f"シミュレータは黄色ロボットのコマンドを {ip}:{port} で待機します")
             except OSError as e:
                 print(f"エラー: 黄色ロボットのコマンド用 {ip}:{port} にバインドできませんでした: {e}")
 
-        if config.ENABLE_BLUE_ROBOT and "blue" in self.robots:
+        if config.ENABLE_YELLOW_ROBOT_1 and "yellow_1" in self.robots:
             try:
-                ip, port = config.ROBOT_LOCAL_IP, config.BLUE_SEND_PORT
+                ip, port = config.ROBOT_LOCAL_IP, config.YELLOW_ROBOT_1_SEND_PORT
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.bind((ip, port))
                 sock.settimeout(0.1)
-                self.cmd_sockets["blue"] = sock
-                print(f"シミュレータは青色ロボットのコマンドを {ip}:{port} で待機します")
+                self.cmd_sockets["yellow_1"] = sock
+                print(f"シミュレータは黄色ロボットのコマンドを {ip}:{port} で待機します")
             except OSError as e:
-                print(f"エラー: 青色ロボットのコマンド用 {ip}:{port} にバインドできませんでした: {e}")
+                print(f"エラー: 黄色ロボットのコマンド用 {ip}:{port} にバインドできませんでした: {e}")
 
         for color, sock in self.cmd_sockets.items():
             thread = threading.Thread(
@@ -90,17 +90,23 @@ class SimulatorUDP:
             "timestamp": current_sim_time,  # このデータが生成されたシミュレーション時刻
             "fps": round(self.simulator_instance.clock.get_fps(), 2),
             "is_calibrated": True,
-            "yellow_robots": [],
-            "blue_robots": [],
+            "yellow_robots": {},
+            "blue_robots": {},
             "orange_balls": [self.ball.get_vision_data()] if self.ball else []
         }
 
-        if "yellow" in self.robots and config.ENABLE_YELLOW_ROBOT:
-            raw_vision_payload["yellow_robots"].append(
-                self.robots["yellow"].get_vision_data())
-        if "blue" in self.robots and config.ENABLE_BLUE_ROBOT:
-            raw_vision_payload["blue_robots"].append(
-                self.robots["blue"].get_vision_data())
+        if "yellow_0" in self.robots and config.ENABLE_YELLOW_ROBOT_0:
+            raw_vision_payload["yellow_robots"]["0"] = self.robots["yellow_0"].get_vision_data(
+            )
+        if "yellow_1" in self.robots and config.ENABLE_YELLOW_ROBOT_1:
+            raw_vision_payload["yellow_robots"]["1"] = self.robots["yellow_1"].get_vision_data(
+            )
+        if "blue_0" in self.robots and config.ENABLE_BLUE_ROBOT_0:
+            raw_vision_payload["blue_robots"]["0"] = self.robots["blue_0"].get_vision_data(
+            )
+        if "blue_1" in self.robots and config.ENABLE_BLUE_ROBOT_1:
+            raw_vision_payload["blue_robots"]["1"] = self.robots["blue_1"].get_vision_data(
+            )
 
         self.vision_data_buffer.append(raw_vision_payload)
 
@@ -130,46 +136,50 @@ class SimulatorUDP:
         current_sim_time = time.time()  # データ生成時刻の基準
         current_send_attempt_time = time.time()  # 送信試行時刻
 
-        if "yellow" in self.robots and config.ENABLE_YELLOW_ROBOT:
+        if "yellow_0" in self.robots and config.ENABLE_YELLOW_ROBOT_0:
             # get_sensor_dataは生の(遅延なし)データを返す
-            raw_yellow_sensor_payload = {
+            raw_yellow_robot_0_sensor_payload = {
                 "timestamp": current_sim_time,
-                "data": self.robots["yellow"].get_sensor_data(self.ball)
+                "data": self.robots["yellow_0"].get_sensor_data(self.ball)
             }
-            self.yellow_sensor_buffer.append(raw_yellow_sensor_payload)
+            self.yellow_robot_0_sensor_buffer.append(
+                raw_yellow_robot_0_sensor_payload)
 
             data_to_send = None
-            while self.yellow_sensor_buffer:
-                if current_send_attempt_time - self.yellow_sensor_buffer[0]["timestamp"] >= self.robot_sensor_delay_s:
-                    data_to_send = self.yellow_sensor_buffer.popleft()["data"]
+            while self.yellow_robot_0_sensor_buffer:
+                if current_send_attempt_time - self.yellow_robot_0_sensor_buffer[0]["timestamp"] >= self.robot_sensor_delay_s:
+                    data_to_send = self.yellow_robot_0_sensor_buffer.popleft()[
+                        "data"]
                 else:
                     break
             if data_to_send:
                 try:
                     msg = json.dumps(data_to_send).encode('utf-8')
                     self.send_socket.sendto(
-                        msg, (self.controller_listen_ip, config.YELLOW_SENSOR_LISTEN_PORT))
+                        msg, (self.controller_listen_ip, config.ROBOT_0_SENSOR_LISTEN_PORT))
                 except Exception as e:
                     print(f"遅延黄色センサーデータ送信中にエラー: {e}")
 
-        if "blue" in self.robots and config.ENABLE_BLUE_ROBOT:
-            raw_blue_sensor_payload = {
+        if "yellow_1" in self.robots and config.ENABLE_YELLOW_ROBOT_1:
+            raw_yellow_robot_1_sensor_payload = {
                 "timestamp": current_sim_time,
-                "data": self.robots["blue"].get_sensor_data(self.ball)
+                "data": self.robots["yellow_1"].get_sensor_data(self.ball)
             }
-            self.blue_sensor_buffer.append(raw_blue_sensor_payload)
+            self.yellow_robot_1_sensor_buffer.append(
+                raw_yellow_robot_1_sensor_payload)
 
             data_to_send = None
-            while self.blue_sensor_buffer:
-                if current_send_attempt_time - self.blue_sensor_buffer[0]["timestamp"] >= self.robot_sensor_delay_s:
-                    data_to_send = self.blue_sensor_buffer.popleft()["data"]
+            while self.yellow_robot_1_sensor_buffer:
+                if current_send_attempt_time - self.yellow_robot_1_sensor_buffer[0]["timestamp"] >= self.robot_sensor_delay_s:
+                    data_to_send = self.yellow_robot_1_sensor_buffer.popleft()[
+                        "data"]
                 else:
                     break
             if data_to_send:
                 try:
                     msg = json.dumps(data_to_send).encode('utf-8')
                     self.send_socket.sendto(
-                        msg, (self.controller_listen_ip, config.BLUE_SENSOR_LISTEN_PORT))
+                        msg, (self.controller_listen_ip, config.ROBOT_1_SENSOR_LISTEN_PORT))
                 except Exception as e:
                     print(f"遅延青色センサーデータ送信中にエラー: {e}")
 
