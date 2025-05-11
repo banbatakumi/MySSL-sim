@@ -97,6 +97,8 @@ class SimulatedRobot:
 
             max_accel_this_command = cmd.get(
                 "move_acce", params.ROBOT_MAX_ACCE_MPSS)
+            if (max_accel_this_command == 0):
+                max_accel_this_command = params.ROBOT_MAX_ACCE_MPSS
             current_actual_accel_magnitude = math.hypot(
                 actual_ax_global, actual_ay_global)
             if current_actual_accel_magnitude > max_accel_this_command and current_actual_accel_magnitude > 0:
