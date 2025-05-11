@@ -307,7 +307,7 @@ class SimulatedRobot:
         # Visionシステム用のロボットデータを取得
         return {
             "angle": round(math.degrees(self.angle_rad), 2),  # 度単位、+X軸からCW
-            "pos": (round(self.x_m * 100.0, 2), round(self.y_m * 100.0, 2))  # cm単位
+            "pos": (round(self.x_m, 3), round(self.y_m, 3))  # m単位
         }
 
     def get_sensor_data(self, ball: 'SimulatedBall'):

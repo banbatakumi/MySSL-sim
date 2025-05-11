@@ -15,7 +15,7 @@ DRIBBLE_PULL_FACTOR = 8.0  # ドリブル時のボール引き寄せ係数
 
 
 # --- センサー遅延設定 ---
-VISION_DATA_DELAY_S = 0.1  # Visionデータの遅延時間 (秒), 例: 100ms
+VISION_DATA_DELAY_S = 0.15  # Visionデータの遅延時間 (秒), 例: 100ms
 ROBOT_SENSOR_DELAY_S = 0.1  # ロボット搭載センサーの遅延時間 (秒), 例: 100ms
 
 

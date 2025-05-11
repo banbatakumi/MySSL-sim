@@ -132,7 +132,7 @@ class SimulatedBall:
     def get_vision_data(self):
         """Visionシステム用のボールデータを取得する"""
         return {
-            "pos": (round(self.x_m * 100.0, 2), round(self.y_m * 100.0, 2))  # cm単位
+            "pos": (round(self.x_m, 3), round(self.y_m, 3))  # m単位
         }
 
     def draw(self, screen: pygame.Surface, simulator: 'Simulator'):
