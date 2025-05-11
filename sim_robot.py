@@ -2,278 +2,389 @@ import pygame
 import math
 import time
 
-from sim_constants import (
-    ROBOT_RADIUS_M, COURT_WIDTH_M, COURT_HEIGHT_M,
-    ROBOT_MAX_SPEED_MPS, ROBOT_MAX_ACCE_MPSS, ROBOT_MAX_ANGULAR_SPEED_RADPS,
-    SENSOR_FOV_HALF_ANGLE_RAD, COLOR_YELLOW_ROBOT, COLOR_BLUE_ROBOT,
-    COLOR_ROBOT_FRONT, COLOR_DEBUG_VECTOR, ROBOT_OUTLINE_WIDTH_PX,
-    BALL_RADIUS_M  # キック/ドリブル距離計算に必要
-)
-from sim_utils import normalize_angle_rad
+import config
+import sim_params as params  # 調整可能なパラメータをインポート
+from sim_utils import normalize_angle_rad  # 角度正規化関数
 
 # 循環インポートを避けるための前方型ヒント
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from sim_ball import SimulatedBall
-    from simulator import Simulator  # メインシミュレータクラス
+    from simulator import Simulator
 
 
 class SimulatedRobot:
-    def __init__(self, robot_id_num, color_name, initial_x_m, initial_y_m, initial_angle_deg, radius_m=ROBOT_RADIUS_M):
+    def __init__(self, color_name, initial_x_m, initial_y_m, initial_angle_deg, radius_m=params.ROBOT_RADIUS_M):
         self.color_name = color_name  # "yellow" または "blue"
         self.x_m = initial_x_m  # X座標 (メートル)
         self.y_m = initial_y_m  # Y座標 (メートル)
-        # 向き (ラジアン、ワールド座標系: +Xから反時計回り、Y軸上向き)
-        self.angle_rad = math.radians(initial_angle_deg)
+        # 角度 (ラジアン、ワールド座標系+X軸から時計回り(CW)が正)
+        self.angle_rad = math.radians(initial_angle_deg)  # configの角度もCW正と解釈
         self.radius_m = radius_m  # 半径 (メートル)
 
         self.vx_mps = 0.0  # X方向の速度 (メートル/秒)
         self.vy_mps = 0.0  # Y方向の速度 (メートル/秒)
-        self.omega_radps = 0.0  # 角速度 (ラジアン/秒)
+        self.omega_radps = 0.0  # 角速度 (ラジアン/秒、CWが正)
 
         self.current_command = None  # 現在のコマンド辞書
         self.last_command_time = 0  # 最後にコマンドを受信した時刻
 
-        # デバッグ用: 実効移動方向 (グローバル、ラジアン)
+        # デバッグ用: 実効移動方向 (グローバル、ラジアン、CWが正)
         self.debug_effective_move_angle_global_rad = 0.0
         self.debug_move_speed_mps = 0.0  # デバッグ用: 移動速度 (メートル/秒)
+
+        self.mass_kg = params.ROBOT_MASS_KG  # 質量 (kg)
+        self.wheel_friction_coeff = params.OMNI_WHEEL_FRICTION_COEFF  # ホイール摩擦係数
 
     def set_command(self, command_dict):
         """ロボットへのコマンドを設定する"""
         self.current_command = command_dict.get("cmd")
         self.last_command_time = time.time()
 
-    def update_physics(self, dt, ball: 'SimulatedBall'):
-        """ロボットの物理演算を更新する"""
-        # デバッグ値をリセット
-        self.debug_effective_move_angle_global_rad = self.angle_rad  # 移動コマンドがない場合は現在の向き
+    def _update_velocities_from_command(self, dt: float, cmd: dict):
+        """コマンドに基づいて self.vx_mps, self.vy_mps, self.omega_radps を計算・更新する"""
+        self.debug_effective_move_angle_global_rad = self.angle_rad  # 移動がない場合のデフォルト
         self.debug_move_speed_mps = 0.0
 
-        if self.current_command is None or (time.time() - self.last_command_time > 0.5):
-            # コマンドがない、または古い場合は減速
+        if cmd.get("stop", False):
+            self.vx_mps = 0.0
+            self.vy_mps = 0.0
+            self.omega_radps = 0.0
+        else:
+            move_speed_mps = cmd.get("move_speed", 0.0)
+            # move_angle_relative_deg: ロボット正面0度、時計回り(CW)が正。例: 90度は左。
+            move_angle_relative_deg = cmd.get("move_angle", 0.0)
+            move_angle_relative_rad = math.radians(move_angle_relative_deg)
+
+            # effective_move_angle_global_rad: ワールド+X軸からCWが正
+            effective_move_angle_global_rad = normalize_angle_rad(
+                self.angle_rad + move_angle_relative_rad)
+
+            self.debug_effective_move_angle_global_rad = effective_move_angle_global_rad
+            self.debug_move_speed_mps = move_speed_mps
+
+            target_vx_global = move_speed_mps * \
+                math.cos(effective_move_angle_global_rad)
+            # ワールドY軸は上向き正、角度はCWなので、sinの符号を反転
+            target_vy_global = move_speed_mps * - \
+                math.sin(effective_move_angle_global_rad)
+
+            target_ax_global = (target_vx_global -
+                                self.vx_mps) / dt if dt > 0 else 0
+            target_ay_global = (target_vy_global -
+                                self.vy_mps) / dt if dt > 0 else 0
+
+            target_force_x_N = self.mass_kg * target_ax_global
+            target_force_y_N = self.mass_kg * target_ay_global
+            target_force_magnitude_N = math.hypot(
+                target_force_x_N, target_force_y_N)
+
+            # ロボット全体が発揮できる最大推進力 (単純化モデル)
+            max_robot_propulsion_force_N = self.mass_kg * \
+                params.GRAVITY_MPSS * self.wheel_friction_coeff * params.NUM_OMNI_WHEELS
+
+            actual_force_x_N = target_force_x_N
+            actual_force_y_N = target_force_y_N
+
+            if target_force_magnitude_N > max_robot_propulsion_force_N and target_force_magnitude_N > 0:
+                scale_factor = max_robot_propulsion_force_N / target_force_magnitude_N
+                actual_force_x_N *= scale_factor
+                actual_force_y_N *= scale_factor
+                # print(f"スリップ検知! 目標力: {target_force_magnitude_N:.2f}N, 最大: {max_robot_propulsion_force_N:.2f}N")
+
+            actual_ax_global = actual_force_x_N / self.mass_kg if self.mass_kg > 0 else 0
+            actual_ay_global = actual_force_y_N / self.mass_kg if self.mass_kg > 0 else 0
+
+            max_accel_this_command = cmd.get(
+                "move_acce", params.ROBOT_MAX_ACCE_MPSS)
+            if (max_accel_this_command == 0):
+                max_accel_this_command = params.ROBOT_MAX_ACCE_MPSS
+            current_actual_accel_magnitude = math.hypot(
+                actual_ax_global, actual_ay_global)
+            if current_actual_accel_magnitude > max_accel_this_command and current_actual_accel_magnitude > 0:
+                scale = max_accel_this_command / current_actual_accel_magnitude
+                actual_ax_global *= scale
+                actual_ay_global *= scale
+
+            self.vx_mps += actual_ax_global * dt
+            self.vy_mps += actual_ay_global * dt
+
+            current_speed_magnitude = math.hypot(self.vx_mps, self.vy_mps)
+            if current_speed_magnitude > params.ROBOT_MAX_SPEED_MPS and current_speed_magnitude > 0:
+                scale = params.ROBOT_MAX_SPEED_MPS / current_speed_magnitude
+                self.vx_mps *= scale
+                self.vy_mps *= scale
+
+            # face_angle: ワールド+X軸からCWが正 (度単位)
+            target_face_angle_deg = cmd.get(
+                "face_angle", math.degrees(self.angle_rad))
+            target_face_angle_rad = normalize_angle_rad(
+                math.radians(target_face_angle_deg))
+
+            face_speed_limit_radps = cmd.get(
+                "face_speed", params.ROBOT_MAX_ANGULAR_SPEED_RADPS)
+            if cmd.get("face_axis", 0) == 0:
+                face_speed_limit_radps = params.ROBOT_MAX_ANGULAR_SPEED_RADPS  # 中心回転時は最大角速度
+
+            angle_diff_rad = normalize_angle_rad(
+                target_face_angle_rad - self.angle_rad)
+
+            if dt > 0:
+                max_rotation_this_step = abs(face_speed_limit_radps * dt)
+                if abs(angle_diff_rad) <= max_rotation_this_step:
+                    self.omega_radps = angle_diff_rad / dt  # CWが正
+                else:
+                    self.omega_radps = math.copysign(
+                        face_speed_limit_radps, angle_diff_rad)  # CWが正
+            else:
+                self.omega_radps = 0.0
+
+            if abs(self.omega_radps) > params.ROBOT_MAX_ANGULAR_SPEED_RADPS:
+                self.omega_radps = math.copysign(
+                    params.ROBOT_MAX_ANGULAR_SPEED_RADPS, self.omega_radps)
+
+    def _update_position_from_velocities(self, dt: float, cmd: dict):
+        """現在の速度に基づいて self.x_m, self.y_m, self.angle_rad を更新する"""
+        x_translation_this_step = self.vx_mps * dt
+        y_translation_this_step = self.vy_mps * dt
+        angle_rotation_this_step = self.omega_radps * dt  # CWの回転量
+
+        initial_x_m_this_step = self.x_m
+        initial_y_m_this_step = self.y_m
+        initial_angle_rad_this_step = self.angle_rad  # CW
+
+        if cmd and cmd.get("face_axis", 0) == 1:  # 前方軸回転
+            pivot_offset_m = self.radius_m
+
+            # 回転軸のワールド座標 (initial_angle_rad_this_step はCW)
+            pivot_x_relative_to_center = pivot_offset_m * \
+                math.cos(initial_angle_rad_this_step)
+            pivot_y_relative_to_center = pivot_offset_m * - \
+                math.sin(initial_angle_rad_this_step)  # Y軸上向き, CW角度
+
+            pivot_x_world_at_step_start = initial_x_m_this_step + pivot_x_relative_to_center
+            pivot_y_world_at_step_start = initial_y_m_this_step + pivot_y_relative_to_center
+
+            translated_pivot_x_world = pivot_x_world_at_step_start + x_translation_this_step
+            translated_pivot_y_world = pivot_y_world_at_step_start + y_translation_this_step
+
+            # 回転軸からロボット中心へのベクトル (回転前)
+            dx_pivot_to_center = -pivot_x_relative_to_center
+            dy_pivot_to_center = -pivot_y_relative_to_center
+
+            # angle_rotation_this_step はCW
+            cos_rot = math.cos(angle_rotation_this_step)
+            sin_rot = math.sin(angle_rotation_this_step)
+
+            # CW回転行列を適用:
+            # x' = x*cos(theta_cw) + y*sin(theta_cw)
+            # y' = -x*sin(theta_cw) + y*cos(theta_cw)
+            rotated_dx_pivot_to_center = dx_pivot_to_center * \
+                cos_rot + dy_pivot_to_center * sin_rot
+            rotated_dy_pivot_to_center = -dx_pivot_to_center * \
+                sin_rot + dy_pivot_to_center * cos_rot
+
+            self.x_m = translated_pivot_x_world + rotated_dx_pivot_to_center
+            self.y_m = translated_pivot_y_world + rotated_dy_pivot_to_center
+            self.angle_rad = normalize_angle_rad(
+                initial_angle_rad_this_step + angle_rotation_this_step)  # CW
+        else:  # 中心軸回転
+            self.x_m = initial_x_m_this_step + x_translation_this_step
+            self.y_m = initial_y_m_this_step + y_translation_this_step
+            self.angle_rad = normalize_angle_rad(
+                initial_angle_rad_this_step + angle_rotation_this_step)  # CW
+
+    def _handle_ball_interactions(self, dt: float, ball: 'SimulatedBall', cmd: dict):
+        """現在の状態とコマンドに基づいてキックとドリブルを処理する"""
+        if not cmd:
+            return
+
+        kick_power = cmd.get("kick", 0)
+        dribble_power = cmd.get("dribble", 0)
+        kicked_this_step = False
+
+        if isinstance(kick_power, (int, float)) and kick_power > 0:
+            dist_to_ball_center = math.hypot(
+                ball.x_m - self.x_m, ball.y_m - self.y_m)
+            max_kick_dist = self.radius_m + params.BALL_RADIUS_M * 0.5
+            if dist_to_ball_center < max_kick_dist:
+                # ロボット中心からボール中心への角度 (ワールド座標系、+X軸からCWが正)
+                # math.atan2(y,x) はCCWを返すので、符号を反転してCWにする
+                world_angle_to_ball_rad_cw = - \
+                    math.atan2(ball.y_m - self.y_m, ball.x_m - self.x_m)
+                # ロボットの向きに対するボールの相対角度 (CWが正)
+                relative_angle_to_ball_rad = normalize_angle_rad(
+                    world_angle_to_ball_rad_cw - self.angle_rad)
+
+                if abs(relative_angle_to_ball_rad) < math.radians(30):  # キッカー視野角: +/- 30度
+                    if ball.is_dribbled_by == self:
+                        ball.stop_dribble()
+                    ball.kick(self, kick_power)
+                    kicked_this_step = True
+
+        if not kicked_this_step:
+            if isinstance(dribble_power, (int, float)) and dribble_power > 0:
+                dist_center_to_center = math.hypot(
+                    ball.x_m - self.x_m, ball.y_m - self.y_m)
+                touch_distance = self.radius_m + params.BALL_RADIUS_M - 0.005
+                initiate_dribble_max_dist = self.radius_m + params.BALL_RADIUS_M + 0.02
+
+                if dist_center_to_center < initiate_dribble_max_dist:
+                    world_angle_to_ball_rad_cw = - \
+                        math.atan2(ball.y_m - self.y_m, ball.x_m - self.x_m)
+                    relative_angle_to_ball_rad = normalize_angle_rad(
+                        world_angle_to_ball_rad_cw - self.angle_rad)
+
+                    if abs(relative_angle_to_ball_rad) < math.radians(70):  # ドリブラー視野角: +/- 70度
+                        if dist_center_to_center < touch_distance or ball.is_dribbled_by == self:
+                            ball.start_dribble(self)
+            else:  # ドリブルパワーが0または無効
+                if ball.is_dribbled_by == self:
+                    ball.stop_dribble()
+
+    def update_physics(self, dt: float, ball: 'SimulatedBall'):
+        """シミュレータから呼び出される主要な物理更新。運動とボール相互作用を扱う。"""
+        cmd_to_process = self.current_command
+        is_cmd_timed_out = (time.time() - self.last_command_time > 0.5)
+
+        if cmd_to_process is None or is_cmd_timed_out:
+            # コマンドがないかタイムアウトした場合、摩擦/減衰を適用
             self.vx_mps *= 0.9
             self.vy_mps *= 0.9
-            self.omega_radps *= 0.9
+            self.omega_radps *= 0.9  # 角速度の減衰
             if abs(self.vx_mps) < 0.01:
-                self.vx_mps = 0
-            if abs(self.vy_mps) < 0.01:
-                self.vy_mps = 0
-            if abs(self.omega_radps) < 0.01:
-                self.omega_radps = 0
-        else:
-            cmd = self.current_command
-            if cmd.get("stop", False):
-                # 停止コマンド
                 self.vx_mps = 0.0
+            if abs(self.vy_mps) < 0.01:
                 self.vy_mps = 0.0
+            if abs(self.omega_radps) < 0.01:
                 self.omega_radps = 0.0
-                if ball.is_dribbled_by == self:
-                    ball.stop_dribble()  # ドリブル中なら解除
-            else:
-                # 移動コマンド処理
-                move_speed_mps = cmd.get("move_speed", 0.0)  # 移動速度
-                move_angle_relative_deg = cmd.get(
-                    "move_angle", 0.0)  # 移動方向 (ロボット相対、度)
-                move_angle_relative_rad = math.radians(move_angle_relative_deg)
-                # 実効的な移動方向 (グローバル座標系)
-                effective_move_angle_global_rad = normalize_angle_rad(
-                    self.angle_rad + move_angle_relative_rad)
 
-                # デバッグ描画用に保存
-                self.debug_effective_move_angle_global_rad = effective_move_angle_global_rad
-                self.debug_move_speed_mps = move_speed_mps
+            if is_cmd_timed_out and ball.is_dribbled_by == self:
+                ball.stop_dribble()  # コマンドタイムアウトでドリブル停止
 
-                # 目標速度 (グローバル座標系)
-                target_vx_global = move_speed_mps * \
-                    math.cos(effective_move_angle_global_rad)
-                target_vy_global = move_speed_mps * - \
-                    math.sin(effective_move_angle_global_rad)  # ワールド座標系ではY軸が上
+            active_cmd = {"stop": True}  # 運動更新用に "stop" コマンドを使用
+        else:
+            active_cmd = cmd_to_process
 
-                # 加速度制限
-                max_accel_this_command = cmd.get(
-                    "move_acce", ROBOT_MAX_ACCE_MPSS)
-                if max_accel_this_command == 0:
-                    max_accel_this_command = ROBOT_MAX_ACCE_MPSS
-                elif max_accel_this_command == 1 and ROBOT_MAX_ACCE_MPSS > 1:
-                    max_accel_this_command = ROBOT_MAX_ACCE_MPSS
+        # 1. コマンドに基づいて速度 (vx, vy, omega) を更新 (または停止コマンド)
+        self._update_velocities_from_command(dt, active_cmd)
 
-                accel_x = (target_vx_global - self.vx_mps) / \
-                    dt if dt > 0 else 0
-                accel_y = (target_vy_global - self.vy_mps) / \
-                    dt if dt > 0 else 0
-                current_accel_magnitude = math.hypot(accel_x, accel_y)
+        # 2. 新しい速度に基づいて位置 (x, y, angle) を更新
+        self._update_position_from_velocities(dt, active_cmd)
 
-                if current_accel_magnitude > max_accel_this_command:
-                    scale = max_accel_this_command / current_accel_magnitude
-                    accel_x *= scale
-                    accel_y *= scale
+        # 3. ボール相互作用 (キック、ドリブル) を元のコマンドで処理
+        self._handle_ball_interactions(
+            dt, ball, active_cmd if not active_cmd.get("stop") else None)
 
-                self.vx_mps += accel_x * dt
-                self.vy_mps += accel_y * dt
+        # コート境界はロボット同士の衝突解決後にシミュレータによって適用される
 
-                # 速度制限
-                current_speed_magnitude = math.hypot(self.vx_mps, self.vy_mps)
-                if current_speed_magnitude > ROBOT_MAX_SPEED_MPS:
-                    scale = ROBOT_MAX_SPEED_MPS / current_speed_magnitude
-                    self.vx_mps *= scale
-                    self.vy_mps *= scale
+    def apply_court_boundaries(self):
+        """self.x_m, self.y_m にコート境界を適用し、速度を反射させる"""
+        half_court_w = config.COURT_WIDTH_M / 2.0
+        half_court_h = config.COURT_HEIGHT_M / 2.0
+        restitution = params.ROBOT_WALL_RESTITUTION_COEFF  # 壁との反発係数
 
-                # 向き制御
-                target_face_angle_deg = cmd.get(
-                    "face_angle", math.degrees(self.angle_rad))  # 目標の向き (度)
-                target_face_angle_rad = math.radians(target_face_angle_deg)
-                face_speed_limit_radps = cmd.get(
-                    "face_speed", ROBOT_MAX_ANGULAR_SPEED_RADPS)  # 目標角速度
-                if cmd.get("face_axis") == 0:
-                    face_speed_limit_radps = ROBOT_MAX_ANGULAR_SPEED_RADPS  # 軸指定なしなら最大角速度
+        # 壁は +/- (コート次元/2 + WALL_OFFSET_M) の位置にある
+        # ロボット中心はこの壁から radius_m 離れている必要がある
+        limit_pos_x = half_court_w + params.WALL_OFFSET_M - self.radius_m
+        limit_neg_x = -half_court_w - params.WALL_OFFSET_M + self.radius_m
+        limit_pos_y = half_court_h + params.WALL_OFFSET_M - self.radius_m
+        limit_neg_y = -half_court_h - params.WALL_OFFSET_M + self.radius_m
 
-                angle_diff_rad = normalize_angle_rad(
-                    target_face_angle_rad - self.angle_rad)  # 現在の向きとの差
+        if self.x_m > limit_pos_x:
+            self.x_m = limit_pos_x
+            self.vx_mps *= -restitution
+        elif self.x_m < limit_neg_x:
+            self.x_m = limit_neg_x
+            self.vx_mps *= -restitution
 
-                if dt > 0:
-                    if abs(angle_diff_rad) < abs(face_speed_limit_radps * dt):  # 1ステップで到達可能か
-                        self.omega_radps = angle_diff_rad / dt
-                    else:
-                        self.omega_radps = math.copysign(
-                            face_speed_limit_radps, angle_diff_rad)  # 符号を合わせて制限速度で回転
-                else:
-                    self.omega_radps = 0
-
-                # 角速度制限
-                if abs(self.omega_radps) > ROBOT_MAX_ANGULAR_SPEED_RADPS:
-                    self.omega_radps = math.copysign(
-                        ROBOT_MAX_ANGULAR_SPEED_RADPS, self.omega_radps)
-
-            # キックとドリブル処理
-            kick_power = cmd.get("kick", 0)
-            dribble_power = cmd.get("dribble", 0)
-            kicked_this_step = False  # このステップでキックしたか
-
-            if isinstance(kick_power, (int, float)) and kick_power > 0:
-                dist_to_ball_center = math.hypot(
-                    ball.x_m - self.x_m, ball.y_m - self.y_m)
-                max_kick_dist = self.radius_m + BALL_RADIUS_M * 0.5  # キック可能な最大距離
-                if dist_to_ball_center < max_kick_dist:
-                    # ボールへの角度 (グローバル、時計回り)
-                    angle_to_ball_global_cw = - \
-                        math.atan2(ball.y_m - self.y_m, ball.x_m - self.x_m)
-                    # ボールへの相対角度
-                    relative_angle_to_ball = normalize_angle_rad(
-                        angle_to_ball_global_cw - self.angle_rad)
-                    if abs(relative_angle_to_ball) < math.radians(30):  # 前方30度以内ならキック
-                        if ball.is_dribbled_by == self:
-                            ball.stop_dribble()
-                        ball.kick(self, kick_power)
-                        kicked_this_step = True
-
-            if not kicked_this_step:  # キックしなかった場合のみドリブル判定
-                if isinstance(dribble_power, (int, float)) and dribble_power > 0:
-                    dist_center_to_center = math.hypot(
-                        ball.x_m - self.x_m, ball.y_m - self.y_m)
-                    touch_distance = self.radius_m + BALL_RADIUS_M - 0.005  # ドリブル継続に必要な接触距離
-                    initiate_dribble_max_dist = self.radius_m + \
-                        BALL_RADIUS_M + 0.02  # ドリブル開始可能な最大距離
-                    if dist_center_to_center < initiate_dribble_max_dist:
-                        angle_to_ball_global_cw = - \
-                            math.atan2(ball.y_m - self.y_m,
-                                       ball.x_m - self.x_m)
-                        relative_angle_to_ball = normalize_angle_rad(
-                            angle_to_ball_global_cw - self.angle_rad)
-                        if abs(relative_angle_to_ball) < math.radians(70):  # 前方70度以内ならドリブル試行
-                            if dist_center_to_center < touch_distance or ball.is_dribbled_by == self:
-                                ball.start_dribble(self)
-                else:  # ドリブルパワーが0または指定なし
-                    if ball.is_dribbled_by == self:  # ドリブル中なら解除
-                        ball.stop_dribble()
-
-        # 位置と角度を更新
-        self.x_m += self.vx_mps * dt
-        self.y_m += self.vy_mps * dt
-        self.angle_rad = normalize_angle_rad(
-            self.angle_rad + self.omega_radps * dt)
-
-        # コート境界内での位置制限
-        half_court_width = COURT_WIDTH_M / 2.0
-        half_court_height = COURT_HEIGHT_M / 2.0
-        self.x_m = max(-half_court_width + self.radius_m,
-                       min(self.x_m, half_court_width - self.radius_m))
-        self.y_m = max(-half_court_height + self.radius_m,
-                       min(self.y_m, half_court_height - self.radius_m))
+        if self.y_m > limit_pos_y:
+            self.y_m = limit_pos_y
+            self.vy_mps *= -restitution
+        elif self.y_m < limit_neg_y:
+            self.y_m = limit_neg_y
+            self.vy_mps *= -restitution
 
     def get_vision_data(self):
-        """Visionシステム用のロボットデータを取得する"""
+        # Visionシステム用のロボットデータを取得
         return {
-            "type": self.color_name,
-            "angle": round(math.degrees(self.angle_rad), 2),  # 度単位
-            "pos": (round(self.x_m * 100.0, 2), round(self.y_m * 100.0, 2))  # cm単位
+            "angle": round(math.degrees(self.angle_rad), 2),  # 度単位、+X軸からCW
+            "pos": (round(self.x_m, 3), round(self.y_m, 3))  # m単位
         }
 
     def get_sensor_data(self, ball: 'SimulatedBall'):
-        """ロボットのセンサーデータを取得する (ボール検知)"""
-        photo_front = False  # 前方センサー
-        photo_back = False  # 後方センサー
-        dx = ball.x_m - self.x_m
-        dy = ball.y_m - self.y_m
-        dist_center_to_center = math.hypot(dx, dy)
-        overlap_depth_m = BALL_RADIUS_M * 0.2
-        dribbler_offset_m = self.radius_m - overlap_depth_m  # ドリブラーの有効範囲
+        """ロボットの生センサーデータを取得 (ボール検知、遅延なし)"""
+        photo_front = False
+        photo_back = False
+        dx_ball = ball.x_m - self.x_m
+        dy_ball = ball.y_m - self.y_m
+        dist_center_to_center = math.hypot(dx_ball, dy_ball)
 
-        if dist_center_to_center <= dribbler_offset_m + 0.005:  # ボールがドリブラー範囲内か
-            angle_to_ball_global_cw = - \
-                math.atan2(dy, dx)  # ボールへの角度 (グローバル、時計回り)
-            relative_angle_to_ball_cw = normalize_angle_rad(
-                angle_to_ball_global_cw - self.angle_rad)  # ボールへの相対角度
+        # センサーがロボットの端より少し内側にあり、ボール表面を検出すると仮定
+        detection_distance_threshold = self.radius_m + params.BALL_RADIUS_M - 0.005
 
-            if abs(relative_angle_to_ball_cw) < SENSOR_FOV_HALF_ANGLE_RAD:
-                photo_front = True  # 前方センサー検知
+        if dist_center_to_center <= detection_distance_threshold:
+            # ロボットからボールへの角度 (ワールド座標系、+X軸からCW)
+            angle_to_ball_world_rad_cw = -math.atan2(dy_ball, dx_ball)
+            # ロボット正面に対するボールの相対角度 (CW)
+            relative_angle_to_ball_rad = normalize_angle_rad(
+                angle_to_ball_world_rad_cw - self.angle_rad)
 
-            angle_to_back_sensor_cw = normalize_angle_rad(
-                relative_angle_to_ball_cw - math.pi)  # 後方センサーの向き
-            if abs(angle_to_back_sensor_cw) < SENSOR_FOV_HALF_ANGLE_RAD:
-                photo_back = True  # 後方センサー検知
+            # 前方センサー
+            if abs(relative_angle_to_ball_rad) < params.SENSOR_FOV_HALF_ANGLE_RAD:
+                photo_front = True
+
+            # 後方センサー (前方から180度)
+            # ボールへの角度をロボット後方からの相対角度に変換
+            relative_angle_to_ball_for_back_sensor_rad = normalize_angle_rad(
+                relative_angle_to_ball_rad - math.pi)  # または +math.pi
+            if abs(relative_angle_to_ball_for_back_sensor_rad) < params.SENSOR_FOV_HALF_ANGLE_RAD:
+                photo_back = True
 
         return {"type": "sensor_data", "photo": {"front": photo_front, "back": photo_back}}
 
     def draw(self, screen: pygame.Surface, simulator: 'Simulator'):
-        """ロボットを描画する"""
-        robot_color_rgb = COLOR_YELLOW_ROBOT if self.color_name == "yellow" else COLOR_BLUE_ROBOT
+        # ロボットを描画
+        robot_color_rgb = config.COLOR_YELLOW_ROBOT if self.color_name == "yellow" else config.COLOR_BLUE_ROBOT
         screen_x, screen_y = simulator.world_to_screen_pos(self.x_m, self.y_m)
         robot_screen_radius = max(
-            1, int(self.radius_m * simulator.current_pixels_per_meter))  # 最小1ピクセル
+            1, int(self.radius_m * simulator.current_pixels_per_meter))
 
         pygame.draw.circle(screen, robot_color_rgb,
-                           (screen_x, screen_y), robot_screen_radius)
+                           (screen_x, screen_y), robot_screen_radius)  # 本体
         pygame.draw.circle(screen, (0, 0, 0), (screen_x, screen_y),
-                           robot_screen_radius, ROBOT_OUTLINE_WIDTH_PX)  # 輪郭
+                           robot_screen_radius, config.ROBOT_OUTLINE_WIDTH_PX)  # 輪郭
 
-        # 前面インジケータ
+        # self.angle_rad はワールド+X軸からCW (Y軸上向きワールド)
+        # スクリーン座標系: Y軸は下向き。
+        # CW角度でスクリーンY軸下向きの場合、Y成分は +sin(angle_cw)
         front_indicator_len_screen = self.radius_m * \
             0.8 * simulator.current_pixels_per_meter
 
-        # 元の前面インジケータ描画ロジック (angle_rad はここでY成分に対してスクリーン角度として扱われる)
-        # self.angle_rad はワールド座標系 (Y軸上向き、反時計回り)。スクリーンY軸は下向き。
-        # 元のコード: screen_y + L * sin(angle_rad) -> angle_radがワールド角の場合、sinが正だと「間違った」方向を指す。
-        # これは元のコードの不整合箇所であり、そのまま保持する。
-        front_x_indicator = screen_x + \
-            front_indicator_len_screen * math.cos(self.angle_rad)
-        front_y_indicator = screen_y + \
-            front_indicator_len_screen * math.sin(self.angle_rad)
-        pygame.draw.line(screen, COLOR_ROBOT_FRONT, (screen_x, screen_y), (int(
-            front_x_indicator), int(front_y_indicator)), 3)
+        front_x_indicator_offset = front_indicator_len_screen * \
+            math.cos(self.angle_rad)
+        front_y_indicator_offset = front_indicator_len_screen * \
+            math.sin(self.angle_rad)  # スクリーンY軸下向き、CW角度のため
 
-        # デバッグ用移動ベクトル描画
+        front_x_indicator = screen_x + front_x_indicator_offset
+        front_y_indicator = screen_y + front_y_indicator_offset
+
+        pygame.draw.line(screen, config.COLOR_ROBOT_FRONT, (screen_x, screen_y),
+                         # 正面インジケータ
+                         (int(front_x_indicator), int(front_y_indicator)), 3)
+
         if simulator.show_debug_vectors and self.current_command and not self.current_command.get("stop", False) and self.debug_move_speed_mps > 0:
+            # debug_effective_move_angle_global_rad はワールド+X軸からCW
             vec_len_world = 0.3 * \
-                (self.debug_move_speed_mps / ROBOT_MAX_SPEED_MPS)  # 速度に応じて長さを変える
+                (self.debug_move_speed_mps / params.ROBOT_MAX_SPEED_MPS)
 
-            # debug_effective_move_angle_global_rad はワールド角度 (反時計回り、Y軸上向き)
             vec_end_x_world = self.x_m + vec_len_world * \
                 math.cos(self.debug_effective_move_angle_global_rad)
             vec_end_y_world = self.y_m + vec_len_world * - \
-                math.sin(
-                    self.debug_effective_move_angle_global_rad)  # ワールド座標系ではY軸が上
+                math.sin(self.debug_effective_move_angle_global_rad)  # ワールドY軸上向き
 
             vec_end_screen_x, vec_end_screen_y = simulator.world_to_screen_pos(
                 vec_end_x_world, vec_end_y_world)
-            pygame.draw.line(screen, COLOR_DEBUG_VECTOR, (screen_x,
-                             screen_y), (vec_end_screen_x, vec_end_screen_y), 2)
+            pygame.draw.line(screen, config.COLOR_DEBUG_VECTOR, (screen_x,
+                             # デバッグベクトル
+                                                                 screen_y), (vec_end_screen_x, vec_end_screen_y), 2)
