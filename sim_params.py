@@ -36,6 +36,6 @@ ROBOT_ROBOT_RESTITUTION_COEFF = 0.6  # ロボット同士の反発係数
 # 高速パスとしてロボットがボールを弾く場合の反発係数
 BALL_ROBOT_FAST_PASS_RESTITUTION_COEFF = 0.25
 # ボールがロボットにこの法線方向相対速度以上で接近した場合、高速パスとみなしドリブルせずに弾く閾値 (m/s)
-ROBOT_BALL_FAST_PASS_THRESHOLD_MPS = 100  # 値は調整が必要
+ROBOT_BALL_FAST_PASS_THRESHOLD_MPS = 2  # 値は調整が必要
 # 上記以外（ドリブルにも至らない）の通常衝突時のボールとロボットの反発係数
 BALL_ROBOT_NORMAL_RESTITUTION_COEFF = 0.5

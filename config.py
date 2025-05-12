@@ -23,23 +23,23 @@ CONTROLLER_IP = "127.0.0.1"
 # "enabled" はこのロボットをシミュレーションで有効にするかどうか
 
 
-COURT_WIDTH_M = 4  # コートの幅 (メートル) - 白線間の距離
-COURT_HEIGHT_M = 3  # コートの高さ (メートル) - 白線間の距離
+COURT_WIDTH_M = 5.2  # コートの幅 (メートル) - 白線間の距離
+COURT_HEIGHT_M = 3.7  # コートの高さ (メートル) - 白線間の距離
 
 
 # ロボットごとの設定
-INITIAI_ROBOT_PORT = 50010
-NUM_ROBOTS = 8  # ロボットの数
+INITIAI_YELLOW_ROBOT_PORT = 50010
+NUM_YELLOW_ROBOTS = 100  # ロボットの数
 
 # ロボットごとの設定
 YELLOW_ROBOTS_CONFIG = []
 
-for i in range(NUM_ROBOTS):
+for i in range(NUM_YELLOW_ROBOTS):
     robot_config = {
         "id": i,
         "ip_for_command_listen": SIMULATOR_LISTEN_IP,
-        "command_listen_port": INITIAI_ROBOT_PORT + i * 2,
-        "sensor_send_port": INITIAI_ROBOT_PORT + i * 2 + 1,
+        "command_listen_port": INITIAI_YELLOW_ROBOT_PORT + i * 2,
+        "sensor_send_port": INITIAI_YELLOW_ROBOT_PORT + i * 2 + 1,
         "enabled": True,
         "initial_pos_x_m": -0.4 - i * 0.2,  # コート幅の1/4 左
         "initial_pos_y_m": 0.0,
@@ -47,30 +47,25 @@ for i in range(NUM_ROBOTS):
     }
     YELLOW_ROBOTS_CONFIG.append(robot_config)
 
-BLUE_ROBOTS_CONFIG = [
-    {
-        "id": 0,
+# ロボットごとの設定
+INITIAI_BLUE_ROBOT_PORT = 50030
+NUM_BLUE_ROBOTS = 6  # ロボットの数
+
+# ロボットごとの設定
+BLUE_ROBOTS_CONFIG = []
+
+for i in range(NUM_YELLOW_ROBOTS):
+    robot_config = {
+        "id": i,
         "ip_for_command_listen": SIMULATOR_LISTEN_IP,
-        "command_listen_port": 50013,  # ポート番号は適宜重複しないように設定
-        "sensor_send_port": 50015,
+        "command_listen_port": INITIAI_BLUE_ROBOT_PORT + i * 2,
+        "sensor_send_port": INITIAI_BLUE_ROBOT_PORT + i * 2 + 1,
         "enabled": False,
-        "initial_pos_x_m": 1.5 / 4,  # コート幅の1/4 右
+        "initial_pos_x_m": -0.4 - i * 0.2,  # コート幅の1/4 左
         "initial_pos_y_m": 0.0,
         "initial_angle_deg": 0.0
-    },
-    {
-        "id": 1,
-        "ip_for_command_listen": SIMULATOR_LISTEN_IP,
-        "command_listen_port": 50014,
-        "sensor_send_port": 50016,
-        "enabled": False,
-        "initial_pos_x_m": 1.5 / 4 + 0.1,
-        "initial_pos_y_m": -0.1,
-        "initial_angle_deg": 0.0
-    },
-    # 必要に応じてロボットを追加
-]
-
+    }
+    BLUE_ROBOTS_CONFIG.append(robot_config)
 
 # 受信バッファサイズ
 BUFFER_SIZE = 65536

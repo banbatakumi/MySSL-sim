@@ -34,6 +34,14 @@ class SimulatedBall:
         target_y = robot.y_m + dribbler_offset_m * - \
             math.sin(robot.angle_rad)
 
+        # ボールがロボット内部に入り込まないように制限
+        dist_to_robot_center = math.hypot(
+            self.x_m - robot.x_m, self.y_m - robot.y_m)
+        if dist_to_robot_center < dribbler_offset_m:
+            # ボールをロボットの前面に移動
+            self.x_m = target_x
+            self.y_m = target_y
+
         self.vx_mps = (target_x - self.x_m) * params.DRIBBLE_PULL_FACTOR
         self.vy_mps = (target_y - self.y_m) * params.DRIBBLE_PULL_FACTOR
 
@@ -168,7 +176,7 @@ class SimulatedBall:
                 original_dribbler = self.is_dribbled_by
                 self.stop_dribble()
                 self._resolve_ball_robot_collision(original_dribbler,
-                                                   params.BALL_ROBOT_FAST_PASS_RESTITUTION_COFF,
+                                                   params.BALL_ROBOT_FAST_PASS_RESTITUTION_COEFF,
                                                    nx_db, ny_db, vn_rel_db)
                 collided_this_frame_with_robot = original_dribbler
             else:
