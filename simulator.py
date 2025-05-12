@@ -38,6 +38,7 @@ class Simulator:
                 robot_id_str = f"yellow_{robot_conf['id']}"
                 self.robots[robot_id_str] = SimulatedRobot(
                     "yellow",
+                    robot_conf['id'],  # robot_id_num を渡す
                     robot_conf["initial_pos_x_m"],
                     robot_conf["initial_pos_y_m"],
                     robot_conf["initial_angle_deg"]  # configの角度もCW正と解釈
@@ -51,6 +52,7 @@ class Simulator:
                 robot_id_str = f"blue_{robot_conf['id']}"
                 self.robots[robot_id_str] = SimulatedRobot(
                     "blue",
+                    robot_conf['id'],  # robot_id_num を渡す
                     robot_conf["initial_pos_x_m"],
                     robot_conf["initial_pos_y_m"],
                     robot_conf["initial_angle_deg"]  # configの角度もCW正と解釈
@@ -140,12 +142,24 @@ class Simulator:
                         nx = dx / dist
                         ny = dy / dist
 
-                        # 各ロボットをオーバーラップの半分だけ移動させる (質量比例も可能だが単純化)
-                        move_dist_each = overlap / 2.0
-                        robot1.x_m -= nx * move_dist_each
-                        robot1.y_m -= ny * move_dist_each
-                        robot2.x_m += nx * move_dist_each
-                        robot2.y_m += ny * move_dist_each
+                        # 質量に応じて移動量を分配
+                        # m1*d1 + m2*d2 = 0, d2 - d1 = overlap_vec
+                        # d1 = -overlap * m2 / (m1+m2)
+                        # d2 = overlap * m1 / (m1+m2)
+                        total_mass = robot1.mass_kg + robot2.mass_kg
+                        if total_mass > 1e-9:
+                            move_dist1 = -overlap * \
+                                (robot2.mass_kg / total_mass)
+                            move_dist2 = overlap * \
+                                (robot1.mass_kg / total_mass)
+                        else:  # ゼロ質量なら半分ずつ
+                            move_dist1 = -overlap / 2.0
+                            move_dist2 = overlap / 2.0
+
+                        robot1.x_m += nx * move_dist1
+                        robot1.y_m += ny * move_dist1
+                        robot2.x_m += nx * move_dist2
+                        robot2.y_m += ny * move_dist2
 
                         # 2. 衝突応答 (速度)
                         # 相対速度
@@ -162,9 +176,12 @@ class Simulator:
                         m1 = robot1.mass_kg
                         m2 = robot2.mass_kg
 
-                        # 力積スカラー (j) を計算
-                        impulse_j = -(1 + restitution_coeff) * vel_along_normal
-                        impulse_j /= (1/m1 + 1/m2)  # 有効質量
+                        if (1/m1 + 1/m2) <= 1e-9:  # 有効質量の分母ゼロ回避
+                            impulse_j = 0
+                        else:
+                            impulse_j = -(1 + restitution_coeff) * \
+                                vel_along_normal
+                            impulse_j /= (1/m1 + 1/m2)  # 有効質量
 
                         # 力積を適用
                         impulse_x = impulse_j * nx
@@ -226,7 +243,7 @@ class Simulator:
                 time.sleep(0.001)  # dtが0の場合のビジーループを防ぐために小スリープ
                 continue
 
-            # 1. ロボットの内部状態を更新 (コマンドからの運動、ボールとの相互作用)
+            # 1. ロボットの内部状態を更新 (コマンドからの運動、ボールとの相互作用「試行」)
             for robot in self.robots.values():
                 robot.update_physics(dt, self.ball)
 
@@ -235,11 +252,18 @@ class Simulator:
                 self.resolve_robot_collisions(dt)
 
             # 3. ロボットにコート境界を適用 (壁に対する最終的な位置/速度調整)
+            #    ボールとの衝突より後、ボールの物理更新より前が良いか、あるいは全物理更新の後か。
+            #    ここではボール更新の前にロボットの位置を確定させる。
             for robot in self.robots.values():
                 robot.apply_court_boundaries()
 
-            # 4. ボールの物理演算を更新 (最終的なロボット位置と相互作用可能)
-            self.ball.update_physics(dt)
+            # 4. ボールの物理演算を更新 (最終的なロボット位置と相互作用、壁との衝突)
+            #    self.robots.values() をリストにして渡す
+            self.ball.update_physics(dt, list(self.robots.values()))
+
+            # 5. (オプション) ボール更新後に再度ロボット境界を適用する場合もあるが、通常は1回で十分
+            # for robot in self.robots.values():
+            #    robot.apply_court_boundaries()
 
             # 設定された間隔でデータを送信
             current_time_for_send = time.time()

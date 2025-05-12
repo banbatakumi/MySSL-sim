@@ -14,8 +14,9 @@ if TYPE_CHECKING:
 
 
 class SimulatedRobot:
-    def __init__(self, color_name, initial_x_m, initial_y_m, initial_angle_deg, radius_m=params.ROBOT_RADIUS_M):
+    def __init__(self, color_name: str, robot_id_num: int, initial_x_m: float, initial_y_m: float, initial_angle_deg: float, radius_m: float = params.ROBOT_RADIUS_M):
         self.color_name = color_name  # "yellow" または "blue"
+        self.robot_id_num = robot_id_num  # ロボットのID (config.py由来)
         self.x_m = initial_x_m  # X座標 (メートル)
         self.y_m = initial_y_m  # Y座標 (メートル)
         # 角度 (ラジアン、ワールド座標系+X軸から時計回り(CW)が正)
@@ -195,52 +196,56 @@ class SimulatedRobot:
                 initial_angle_rad_this_step + angle_rotation_this_step)  # CW
 
     def _handle_ball_interactions(self, dt: float, ball: 'SimulatedBall', cmd: dict):
-        """現在の状態とコマンドに基づいてキックとドリブルを処理する"""
+        """現在の状態とコマンドに基づいてキックとドリブルを「試行」する"""
         if not cmd:
             return
 
         kick_power = cmd.get("kick", 0)
         dribble_power = cmd.get("dribble", 0)
-        kicked_this_step = False
 
+        # キック試行
         if isinstance(kick_power, (int, float)) and kick_power > 0:
             dist_to_ball_center = math.hypot(
                 ball.x_m - self.x_m, ball.y_m - self.y_m)
-            max_kick_dist = self.radius_m + params.BALL_RADIUS_M * 0.5
+            # キック可能距離: ロボット半径 + ボール半径の半分程度 (ボールにめり込んでいる想定)
+            max_kick_dist = self.radius_m + params.BALL_RADIUS_M * 0.75
             if dist_to_ball_center < max_kick_dist:
-                # ロボット中心からボール中心への角度 (ワールド座標系、+X軸からCWが正)
-                # math.atan2(y,x) はCCWを返すので、符号を反転してCWにする
                 world_angle_to_ball_rad_cw = - \
                     math.atan2(ball.y_m - self.y_m, ball.x_m - self.x_m)
-                # ロボットの向きに対するボールの相対角度 (CWが正)
                 relative_angle_to_ball_rad = normalize_angle_rad(
                     world_angle_to_ball_rad_cw - self.angle_rad)
 
                 if abs(relative_angle_to_ball_rad) < math.radians(30):  # キッカー視野角: +/- 30度
+                    # ボール側の衝突判定で高速パスとして弾かれる可能性もあるが、ここではキックを試みる
+                    # ドリブル中なら解除してからキック
                     if ball.is_dribbled_by == self:
                         ball.stop_dribble()
                     ball.kick(self, kick_power)
-                    kicked_this_step = True
+                    return  # キックしたらその後のドリブル試行はしない
 
-        if not kicked_this_step:
-            if isinstance(dribble_power, (int, float)) and dribble_power > 0:
-                dist_center_to_center = math.hypot(
-                    ball.x_m - self.x_m, ball.y_m - self.y_m)
-                touch_distance = self.radius_m + params.BALL_RADIUS_M - 0.005
-                initiate_dribble_max_dist = self.radius_m + params.BALL_RADIUS_M + 0.02
+        # ドリブル試行 (キックしなかった場合)
+        if isinstance(dribble_power, (int, float)) and dribble_power > 0:
+            dist_center_to_center = math.hypot(
+                ball.x_m - self.x_m, ball.y_m - self.y_m)
+            # ドリブル開始可能距離: ロボット半径 + ボール半径 + 少しの余裕
+            initiate_dribble_max_dist = self.radius_m + params.BALL_RADIUS_M + 0.02
 
-                if dist_center_to_center < initiate_dribble_max_dist:
-                    world_angle_to_ball_rad_cw = - \
-                        math.atan2(ball.y_m - self.y_m, ball.x_m - self.x_m)
-                    relative_angle_to_ball_rad = normalize_angle_rad(
-                        world_angle_to_ball_rad_cw - self.angle_rad)
+            if dist_center_to_center < initiate_dribble_max_dist:
+                world_angle_to_ball_rad_cw = - \
+                    math.atan2(ball.y_m - self.y_m, ball.x_m - self.x_m)
+                relative_angle_to_ball_rad = normalize_angle_rad(
+                    world_angle_to_ball_rad_cw - self.angle_rad)
 
-                    if abs(relative_angle_to_ball_rad) < math.radians(70):  # ドリブラー視野角: +/- 70度
-                        if dist_center_to_center < touch_distance or ball.is_dribbled_by == self:
-                            ball.start_dribble(self)
-            else:  # ドリブルパワーが0または無効
-                if ball.is_dribbled_by == self:
-                    ball.stop_dribble()
+                # ドリブラー視野角: +/- 70度程度
+                if abs(relative_angle_to_ball_rad) < math.radians(70):
+                    # ボール側の衝突判定で高速パスとして弾かれる可能性もあるが、ここではドリブルを試みる
+                    # ドリブルセンサーに触れる程度の距離、または既に自分がドリブル中なら維持しようとする
+                    touch_distance = self.radius_m + params.BALL_RADIUS_M + 0.002
+                    if dist_center_to_center < touch_distance or ball.is_dribbled_by == self:
+                        ball.start_dribble(self)
+        else:  # ドリブルパワーが0または無効
+            if ball.is_dribbled_by == self:
+                ball.stop_dribble()
 
     def update_physics(self, dt: float, ball: 'SimulatedBall'):
         """シミュレータから呼び出される主要な物理更新。運動とボール相互作用を扱う。"""
@@ -273,10 +278,11 @@ class SimulatedRobot:
         self._update_position_from_velocities(dt, active_cmd)
 
         # 3. ボール相互作用 (キック、ドリブル) を元のコマンドで処理
+        #    active_cmdが{"stop": True}の場合、_handle_ball_interactionsに渡すcmdはNone相当が良い。
+        effective_ball_interaction_cmd = active_cmd if not active_cmd.get(
+            "stop") else None
         self._handle_ball_interactions(
-            dt, ball, active_cmd if not active_cmd.get("stop") else None)
-
-        # コート境界はロボット同士の衝突解決後にシミュレータによって適用される
+            dt, ball, effective_ball_interaction_cmd)
 
     def apply_court_boundaries(self):
         """self.x_m, self.y_m にコート境界を適用し、速度を反射させる"""
