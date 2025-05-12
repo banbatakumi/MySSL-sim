@@ -29,7 +29,7 @@ COURT_HEIGHT_M = 3.7  # コートの高さ (メートル) - 白線間の距離
 
 # ロボットごとの設定
 INITIAI_YELLOW_ROBOT_PORT = 50010
-NUM_YELLOW_ROBOTS = 100  # ロボットの数
+NUM_YELLOW_ROBOTS = 6  # ロボットの数
 
 # ロボットごとの設定
 YELLOW_ROBOTS_CONFIG = []
