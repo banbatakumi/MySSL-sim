@@ -22,6 +22,7 @@ ROBOT_SENSOR_DELAY_S = 0.1  # ロボット搭載センサーの遅延時間 (秒
 BALL_RADIUS_M = 0.0215  # ボールの半径 (メートル)
 BALL_FRICTION_COEFF = 0.1  # ボールの摩擦係数
 GRAVITY_MPSS = 9.81  # 重力加速度 (メートル/秒^2)
+BALL_MASS_KG = 0.043  # ボールの質量 (kg) (SSL規格では40-45g)
 
 SENSOR_FOV_HALF_ANGLE_RAD = math.radians(20)  # センサーの視野角の半分 (ラジアン)
 
@@ -30,3 +31,11 @@ WALL_OFFSET_M = 0.20  # コートの白線から壁までのオフセット距�
 BALL_WALL_RESTITUTION_COEFF = 0.5  # ボールと壁の反発係数
 ROBOT_WALL_RESTITUTION_COEFF = 0.4  # ロボットと壁の反発係数
 ROBOT_ROBOT_RESTITUTION_COEFF = 0.6  # ロボット同士の反発係数
+
+# --- ボールとロボットの衝突パラメータ ---
+# 高速パスとしてロボットがボールを弾く場合の反発係数
+BALL_ROBOT_FAST_PASS_RESTITUTION_COEFF = 0.25
+# ボールがロボットにこの法線方向相対速度以上で接近した場合、高速パスとみなしドリブルせずに弾く閾値 (m/s)
+ROBOT_BALL_FAST_PASS_THRESHOLD_MPS = 100  # 値は調整が必要
+# 上記以外（ドリブルにも至らない）の通常衝突時のボールとロボットの反発係数
+BALL_ROBOT_NORMAL_RESTITUTION_COEFF = 0.5

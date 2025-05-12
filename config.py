@@ -23,32 +23,29 @@ CONTROLLER_IP = "127.0.0.1"
 # "enabled" はこのロボットをシミュレーションで有効にするかどうか
 
 
-COURT_WIDTH_M = 1.5  # コートの幅 (メートル) - 白線間の距離
-COURT_HEIGHT_M = 1.0  # コートの高さ (メートル) - 白線間の距離
+COURT_WIDTH_M = 4  # コートの幅 (メートル) - 白線間の距離
+COURT_HEIGHT_M = 3  # コートの高さ (メートル) - 白線間の距離
 
-YELLOW_ROBOTS_CONFIG = [
-    {
-        "id": 0,
-        "ip_for_command_listen": SIMULATOR_LISTEN_IP,  # シミュレータがコマンドをリッスンするIP
-        "command_listen_port": 50008,
-        "sensor_send_port": 50009,
+
+# ロボットごとの設定
+INITIAI_ROBOT_PORT = 50010
+NUM_ROBOTS = 8  # ロボットの数
+
+# ロボットごとの設定
+YELLOW_ROBOTS_CONFIG = []
+
+for i in range(NUM_ROBOTS):
+    robot_config = {
+        "id": i,
+        "ip_for_command_listen": SIMULATOR_LISTEN_IP,
+        "command_listen_port": INITIAI_ROBOT_PORT + i * 2,
+        "sensor_send_port": INITIAI_ROBOT_PORT + i * 2 + 1,
         "enabled": True,
-        "initial_pos_x_m": -0.4,  # コート幅の1/4 左
+        "initial_pos_x_m": -0.4 - i * 0.2,  # コート幅の1/4 左
         "initial_pos_y_m": 0.0,
         "initial_angle_deg": 0.0
-    },
-    {
-        "id": 1,
-        "ip_for_command_listen": SIMULATOR_LISTEN_IP,
-        "command_listen_port": 50012,
-        "sensor_send_port": 50010,
-        "enabled": True,
-        "initial_pos_x_m": -0.6,  # 少しずらす例
-        "initial_pos_y_m": 0,
-        "initial_angle_deg": 0.0
-    },
-    # 必要に応じてロボットを追加
-]
+    }
+    YELLOW_ROBOTS_CONFIG.append(robot_config)
 
 BLUE_ROBOTS_CONFIG = [
     {
@@ -79,7 +76,7 @@ BLUE_ROBOTS_CONFIG = [
 BUFFER_SIZE = 65536
 
 # 制御ループのポーリング間隔 (秒) - シミュレータ内のデータ送信周期の目安
-CONTROL_LOOP_INTERVAL = 0.016  # 約60Hz (16ms)
+CONTROL_LOOP_INTERVAL = 0.001  # 約60Hz (16ms)
 
 
 # --- 初期描画定数 (ウィンドウサイズ変更時に更新) ---
