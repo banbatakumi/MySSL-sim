@@ -1,5 +1,6 @@
 import pygame
 import math
+import random  # randomモジュールをインポート
 
 import config
 import sim_params as params  # シミュレーションのパラメータをインポート
@@ -228,12 +229,26 @@ class SimulatedBall:
             self.stop_dribble()
 
         kick_speed_boost_mps = power * params.KICK_POWER_TO_SPEED_MPS
-        kick_angle_rad = robot.angle_rad
 
+        # ロボットの現在の向き (CWが正、ラジアン)
+        base_kick_angle_rad = robot.angle_rad
+
+        # キック角度にランダム性を加える
+        # params.KICK_ANGLE_RANDOMNESS_DEG は度単位なのでラジアンに変換
+        angle_randomness_rad = math.radians(params.KICK_ANGLE_RANDOMNESS_DEG)
+        # -angle_randomness_rad から +angle_randomness_rad の間のランダムなオフセットを生成
+        random_offset_rad = random.uniform(-angle_randomness_rad,
+                                           angle_randomness_rad)
+
+        final_kick_angle_rad = base_kick_angle_rad + random_offset_rad
+
+        # ワールド座標系での速度成分を計算
+        # robot.angle_rad と同様に final_kick_angle_rad もCWが正
+        # ワールドY軸は上向き正なので、sin成分の符号を反転
         self.vx_mps = robot.vx_mps + \
-            kick_speed_boost_mps * math.cos(kick_angle_rad)
+            kick_speed_boost_mps * math.cos(final_kick_angle_rad)
         self.vy_mps = robot.vy_mps + kick_speed_boost_mps * - \
-            math.sin(kick_angle_rad)
+            math.sin(final_kick_angle_rad)
 
     def start_dribble(self, robot: 'SimulatedRobot'):
         if self.is_dribbled_by is not None and self.is_dribbled_by != robot:

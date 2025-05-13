@@ -23,13 +23,14 @@ CONTROLLER_IP = "127.0.0.1"
 # "enabled" はこのロボットをシミュレーションで有効にするかどうか
 
 
-COURT_WIDTH_M = 5.2  # コートの幅 (メートル) - 白線間の距離
-COURT_HEIGHT_M = 3.7  # コートの高さ (メートル) - 白線間の距離
-
+# COURT_WIDTH_M = 5.2  # コートの幅 (メートル) - 白線間の距離
+# COURT_HEIGHT_M = 3.7  # コートの高さ (メートル) - 白線間の距離
+COURT_WIDTH_M = 1.5  # コートの幅 (メートル) - 白線間の距離
+COURT_HEIGHT_M = 1  # コートの高さ (メートル) - 白線間の距離
 
 # ロボットごとの設定
 INITIAI_YELLOW_ROBOT_PORT = 50010
-NUM_YELLOW_ROBOTS = 6  # ロボットの数
+NUM_YELLOW_ROBOTS = 2  # ロボットの数
 
 # ロボットごとの設定
 YELLOW_ROBOTS_CONFIG = []
@@ -49,7 +50,7 @@ for i in range(NUM_YELLOW_ROBOTS):
 
 # ロボットごとの設定
 INITIAI_BLUE_ROBOT_PORT = 50030
-NUM_BLUE_ROBOTS = 6  # ロボットの数
+NUM_BLUE_ROBOTS = 2  # ロボットの数
 
 # ロボットごとの設定
 BLUE_ROBOTS_CONFIG = []
