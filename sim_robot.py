@@ -3,7 +3,7 @@ import math
 import time
 
 import config
-import sim_params as params  # 調整可能なパラメータをインポート
+import params as params  # 調整可能なパラメータをインポート
 from sim_utils import normalize_angle_rad  # 角度正規化関数
 
 # 循環インポートを避けるための前方型ヒント
@@ -237,7 +237,7 @@ class SimulatedRobot:
                     world_angle_to_ball_rad_cw - self.angle_rad)
 
                 # ドリブラー視野角: +/- 70度程度
-                if abs(relative_angle_to_ball_rad) < math.radians(70):
+                if abs(relative_angle_to_ball_rad) < math.radians(30):
                     # ボール側の衝突判定で高速パスとして弾かれる可能性もあるが、ここではドリブルを試みる
                     # ドリブルセンサーに触れる程度の距離、または既に自分がドリブル中なら維持しようとする
                     touch_distance = self.radius_m + params.BALL_RADIUS_M + 0.002
@@ -286,8 +286,8 @@ class SimulatedRobot:
 
     def apply_court_boundaries(self):
         """self.x_m, self.y_m にコート境界を適用し、速度を反射させる"""
-        half_court_w = config.COURT_WIDTH_M / 2.0
-        half_court_h = config.COURT_HEIGHT_M / 2.0
+        half_court_w = params.COURT_WIDTH_M / 2.0
+        half_court_h = params.COURT_HEIGHT_M / 2.0
         restitution = params.ROBOT_WALL_RESTITUTION_COEFF  # 壁との反発係数
 
         # 壁は +/- (コート次元/2 + WALL_OFFSET_M) の位置にある

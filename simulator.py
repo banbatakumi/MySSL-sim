@@ -2,7 +2,7 @@ from sim_udp_handler import SimulatorUDP
 from sim_robot import SimulatedRobot
 from sim_ball import SimulatedBall
 import config
-import sim_params as params
+import params as params
 import pygame
 import time
 import sys
@@ -98,8 +98,8 @@ class Simulator:
         effective_height_px = self.current_screen_height_px - \
             2 * self.current_screen_padding_px
 
-        world_display_width_m = config.COURT_WIDTH_M + 2 * params.WALL_OFFSET_M
-        world_display_height_m = config.COURT_HEIGHT_M + 2 * params.WALL_OFFSET_M
+        world_display_width_m = params.COURT_WIDTH_M + 2 * params.WALL_OFFSET_M
+        world_display_height_m = params.COURT_HEIGHT_M + 2 * params.WALL_OFFSET_M
 
         if world_display_width_m > 0 and world_display_height_m > 0 and effective_width_px > 0 and effective_height_px > 0:
             ppm_w = effective_width_px / world_display_width_m
@@ -214,9 +214,9 @@ class Simulator:
                         wx, wy = self.screen_to_world_pos(*event.pos)
 
                         # ボール配置境界 (ボールの壁衝突境界と同じ)
-                        h_wall_boundary_w = config.COURT_WIDTH_M / 2.0 + \
+                        h_wall_boundary_w = params.COURT_WIDTH_M / 2.0 + \
                             params.WALL_OFFSET_M - self.ball.radius_m
-                        h_wall_boundary_h = config.COURT_HEIGHT_M / 2.0 + \
+                        h_wall_boundary_h = params.COURT_HEIGHT_M / 2.0 + \
                             params.WALL_OFFSET_M - self.ball.radius_m
 
                         clamped_wx = max(-h_wall_boundary_w,
@@ -281,14 +281,14 @@ class Simulator:
 
     def draw_field(self):
         self.screen.fill(config.COLOR_BACKGROUND)  # 背景色で塗りつぶし
-        hw_m, hh_m = config.COURT_WIDTH_M / 2.0, config.COURT_HEIGHT_M / 2.0  # コート半幅、半高
+        hw_m, hh_m = params.COURT_WIDTH_M / 2.0, params.COURT_HEIGHT_M / 2.0  # コート半幅、半高
         # フィールドラインの左上スクリーン座標
         tl_lines_sx, tl_lines_sy = self.world_to_screen_pos(-hw_m, hh_m)
         # フィールドラインの幅と高さ (ピクセル)
         field_lines_w_px = max(
-            1, int(config.COURT_WIDTH_M * self.current_pixels_per_meter))
+            1, int(params.COURT_WIDTH_M * self.current_pixels_per_meter))
         field_lines_h_px = max(
-            1, int(config.COURT_HEIGHT_M * self.current_pixels_per_meter))
+            1, int(params.COURT_HEIGHT_M * self.current_pixels_per_meter))
 
         if field_lines_w_px > 0 and field_lines_h_px > 0:
             pygame.draw.rect(self.screen, config.COLOR_FIELD_LINES,
@@ -298,8 +298,8 @@ class Simulator:
 
         # センターサークル
         cx_s, cy_s = self.world_to_screen_pos(0, 0)  # 中心点
-        center_circle_radius_m = 0.25  # SSLセンターサークル半径
-        cc_r_px = int(center_circle_radius_m * self.current_pixels_per_meter)
+        cc_r_px = int(params.CENTEWR_CIRCLE_RADIUS_M *
+                      self.current_pixels_per_meter)
         if cc_r_px >= config.FIELD_MARKING_WIDTH_PX:
             pygame.draw.circle(self.screen, config.COLOR_FIELD_LINES,
                                (cx_s, cy_s), cc_r_px, config.FIELD_MARKING_WIDTH_PX)
@@ -312,14 +312,101 @@ class Simulator:
         cl_bot_s = self.world_to_screen_pos(0, -hh_m)
         pygame.draw.line(self.screen, config.COLOR_FIELD_LINES,
                          cl_top_s, cl_bot_s, config.FIELD_MARKING_WIDTH_PX)
+        cl_left_s = self.world_to_screen_pos(hw_m, 0)
+        cl_right_s = self.world_to_screen_pos(-hw_m, 0)
+        pygame.draw.line(self.screen, config.COLOR_FIELD_LINES,
+                         cl_left_s, cl_right_s, config.FIELD_MARKING_WIDTH_PX)
+
+        # ゴールエリア（白色）
+        goal_area_w = params.GOAL_AREA_WIDTH_M
+        goal_area_h = params.GOAL_AREA_HEIGHT_M
+
+        # 左ゴールエリア
+        ga_left_x1 = -params.COURT_WIDTH_M / 2
+        ga_left_x2 = ga_left_x1 + goal_area_h
+        ga_y1 = goal_area_w / 2
+        ga_y2 = -goal_area_w / 2
+        ga_left_rect_topleft = self.world_to_screen_pos(ga_left_x1, ga_y1)
+        ga_left_rect_bottomright = self.world_to_screen_pos(ga_left_x2, ga_y2)
+        pygame.draw.rect(
+            self.screen,
+            config.COLOR_FIELD_LINES,
+            pygame.Rect(
+                min(ga_left_rect_topleft[0], ga_left_rect_bottomright[0]),
+                min(ga_left_rect_topleft[1], ga_left_rect_bottomright[1]),
+                abs(ga_left_rect_bottomright[0] - ga_left_rect_topleft[0]),
+                abs(ga_left_rect_bottomright[1] - ga_left_rect_topleft[1])
+            ),
+            config.FIELD_MARKING_WIDTH_PX
+        )
+
+        # 右ゴールエリア
+        ga_right_x2 = params.COURT_WIDTH_M / 2
+        ga_right_x1 = ga_right_x2 - goal_area_h
+        ga_right_rect_topleft = self.world_to_screen_pos(ga_right_x1, ga_y1)
+        ga_right_rect_bottomright = self.world_to_screen_pos(
+            ga_right_x2, ga_y2)
+        pygame.draw.rect(
+            self.screen,
+            config.COLOR_FIELD_LINES,
+            pygame.Rect(
+                min(ga_right_rect_topleft[0], ga_right_rect_bottomright[0]),
+                min(ga_right_rect_topleft[1], ga_right_rect_bottomright[1]),
+                abs(ga_right_rect_bottomright[0] - ga_right_rect_topleft[0]),
+                abs(ga_right_rect_bottomright[1] - ga_right_rect_topleft[1])
+            ),
+            config.FIELD_MARKING_WIDTH_PX
+        )
+
+        # ゴール（黒色）
+        goal_w = params.GOAL_WIDTH   # ゴールの幅（Y方向）
+        goal_h = params.GOAL_HEIGHT  # ゴールの厚み（X方向）
+
+        # 左ゴール
+        left_goal_center_x = -params.COURT_WIDTH_M / 2 - goal_h / 2
+        left_goal_rect_topleft = self.world_to_screen_pos(
+            left_goal_center_x - goal_h / 2,  goal_w / 2)
+        left_goal_rect_bottomright = self.world_to_screen_pos(
+            left_goal_center_x + goal_h / 2, -goal_w / 2)
+        pygame.draw.rect(
+            self.screen,
+            config.COLOR_GOAL,
+            pygame.Rect(
+                min(left_goal_rect_topleft[0], left_goal_rect_bottomright[0]),
+                min(left_goal_rect_topleft[1], left_goal_rect_bottomright[1]),
+                abs(left_goal_rect_bottomright[0] - left_goal_rect_topleft[0]),
+                abs(left_goal_rect_bottomright[1] - left_goal_rect_topleft[1])
+            )
+        )
+
+        # 右ゴール
+        right_goal_center_x = params.COURT_WIDTH_M / 2 + goal_h / 2
+        right_goal_rect_topleft = self.world_to_screen_pos(
+            right_goal_center_x - goal_h / 2,  goal_w / 2)
+        right_goal_rect_bottomright = self.world_to_screen_pos(
+            right_goal_center_x + goal_h / 2, -goal_w / 2)
+        pygame.draw.rect(
+            self.screen,
+            config.COLOR_GOAL,
+            pygame.Rect(
+                min(right_goal_rect_topleft[0],
+                    right_goal_rect_bottomright[0]),
+                min(right_goal_rect_topleft[1],
+                    right_goal_rect_bottomright[1]),
+                abs(right_goal_rect_bottomright[0] -
+                    right_goal_rect_topleft[0]),
+                abs(right_goal_rect_bottomright[1] -
+                    right_goal_rect_topleft[1])
+            )
+        )
 
         # 壁 (フィールドラインから WALL_OFFSET_M 外側)
         wall_line_thickness_px = config.WALL_LINE_WIDTH_PX
-        wall_top_y_m = config.COURT_HEIGHT_M / 2.0 + params.WALL_OFFSET_M
-        wall_bottom_y_m = - (config.COURT_HEIGHT_M /
+        wall_top_y_m = params.COURT_HEIGHT_M / 2.0 + params.WALL_OFFSET_M
+        wall_bottom_y_m = - (params.COURT_HEIGHT_M /
                              2.0 + params.WALL_OFFSET_M)
-        wall_left_x_m = - (config.COURT_WIDTH_M / 2.0 + params.WALL_OFFSET_M)
-        wall_right_x_m = config.COURT_WIDTH_M / 2.0 + params.WALL_OFFSET_M
+        wall_left_x_m = - (params.COURT_WIDTH_M / 2.0 + params.WALL_OFFSET_M)
+        wall_right_x_m = params.COURT_WIDTH_M / 2.0 + params.WALL_OFFSET_M
         wall_top_left_s = self.world_to_screen_pos(wall_left_x_m, wall_top_y_m)
         wall_top_right_s = self.world_to_screen_pos(
             wall_right_x_m, wall_top_y_m)

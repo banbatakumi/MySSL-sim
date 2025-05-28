@@ -3,7 +3,7 @@ import math
 import random  # randomモジュールをインポート
 
 import config
-import sim_params as params  # シミュレーションのパラメータをインポート
+import params as params  # シミュレーションのパラメータをインポート
 
 # 循環インポートを避けるための前方型ヒント
 from typing import TYPE_CHECKING, List
@@ -77,13 +77,13 @@ class SimulatedBall:
 
     def _handle_wall_collision(self, dt: float):
         """ボールと壁の衝突処理"""
-        wall_inner_boundary_x_positive = config.COURT_WIDTH_M / \
+        wall_inner_boundary_x_positive = params.COURT_WIDTH_M / \
             2.0 + params.WALL_OFFSET_M - self.radius_m
-        wall_inner_boundary_x_negative = -config.COURT_WIDTH_M / \
+        wall_inner_boundary_x_negative = -params.COURT_WIDTH_M / \
             2.0 - params.WALL_OFFSET_M + self.radius_m
-        wall_inner_boundary_y_positive = config.COURT_HEIGHT_M / \
+        wall_inner_boundary_y_positive = params.COURT_HEIGHT_M / \
             2.0 + params.WALL_OFFSET_M - self.radius_m
-        wall_inner_boundary_y_negative = -config.COURT_HEIGHT_M / \
+        wall_inner_boundary_y_negative = -params.COURT_HEIGHT_M / \
             2.0 - params.WALL_OFFSET_M + self.radius_m
 
         if self.x_m > wall_inner_boundary_x_positive:

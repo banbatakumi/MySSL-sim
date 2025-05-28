@@ -4,7 +4,7 @@ import threading
 import time
 import collections
 import config  # config.py をインポート
-import sim_params as params
+import params as params
 
 from typing import Dict, Any
 from typing import TYPE_CHECKING
