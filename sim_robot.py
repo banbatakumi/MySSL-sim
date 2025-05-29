@@ -124,7 +124,7 @@ class SimulatedRobot:
 
             face_speed_limit_radps = cmd.get(
                 "face_speed", params.ROBOT_MAX_ANGULAR_SPEED_RADPS)
-            if cmd.get("face_axis", 0) == 0:
+            if cmd.get("face_speed", 0) == 0:
                 face_speed_limit_radps = params.ROBOT_MAX_ANGULAR_SPEED_RADPS  # 中心回転時は最大角速度
 
             angle_diff_rad = normalize_angle_rad(

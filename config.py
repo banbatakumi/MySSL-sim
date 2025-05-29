@@ -1,7 +1,8 @@
 import params
 
 # --- UDP 通信設定 ---
-VISION_LISTEN_PORT = 50007
+VISION_SEND_PORT_YELLOW = 50007
+VISION_SEND_PORT_BLUE = 50008
 
 SIMULATOR_LISTEN_IP = "0.0.0.0"
 
@@ -12,7 +13,7 @@ BUFFER_SIZE = 65536
 
 
 # ロボットごとの設定
-INITIAI_YELLOW_ROBOT_PORT = 50010
+INITIAI_YELLOW_ROBOT_PORT = 50020
 NUM_YELLOW_ROBOTS = 11  # ロボットの数
 
 # ロボットごとの設定
@@ -32,7 +33,7 @@ for i in range(NUM_YELLOW_ROBOTS):
     YELLOW_ROBOTS_CONFIG.append(robot_config)
 
 # ロボットごとの設定
-INITIAI_BLUE_ROBOT_PORT = 50030
+INITIAI_BLUE_ROBOT_PORT = 50050
 NUM_BLUE_ROBOTS = 2  # ロボットの数
 
 # ロボットごとの設定
@@ -44,7 +45,7 @@ for i in range(NUM_YELLOW_ROBOTS):
         "ip_for_command_listen": SIMULATOR_LISTEN_IP,
         "command_listen_port": INITIAI_BLUE_ROBOT_PORT + i * 2,
         "sensor_send_port": INITIAI_BLUE_ROBOT_PORT + i * 2 + 1,
-        "enabled": False,
+        "enabled": True,
         "initial_pos_x_m": -0.4 - i * 0.2,  # コート幅の1/4 左
         "initial_pos_y_m": 0.0,
         "initial_angle_deg": 0.0

@@ -132,7 +132,9 @@ class SimulatorUDP:
             try:
                 msg = json.dumps(data_to_send).encode('utf-8')
                 self.send_socket.sendto(
-                    msg, (self.controller_dest_ip, config.VISION_LISTEN_PORT))
+                    msg, (self.controller_dest_ip, config.VISION_SEND_PORT_YELLOW))
+                self.send_socket.sendto(
+                    msg, (self.controller_dest_ip, config.VISION_SEND_PORT_BLUE))
             except Exception as e:
                 print(f"遅延Visionデータの送信中にエラーが発生しました: {e}")
 
