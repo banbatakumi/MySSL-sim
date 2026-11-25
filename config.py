@@ -6,7 +6,8 @@ VISION_SEND_PORT_BLUE = 50008
 
 SIMULATOR_LISTEN_IP = "0.0.0.0"
 
-CONTROLLER_IP = "127.0.0.1"
+CONTROLLER_IP_YELLOW = "127.0.0.1"
+CONTROLLER_IP_BLUE = "127.0.0.1"
 
 # 受信バッファサイズ
 BUFFER_SIZE = 65536
@@ -26,7 +27,7 @@ for i in range(NUM_YELLOW_ROBOTS):
         "command_listen_port": INITIAI_YELLOW_ROBOT_PORT + i * 2,
         "sensor_send_port": INITIAI_YELLOW_ROBOT_PORT + i * 2 + 1,
         "enabled": True,
-        "initial_pos_x_m": -0.4 - i * 0.2,
+        "initial_pos_x_m": -params.CENTEWR_CIRCLE_RADIUS_M - 0.2 - i * 0.2,
         "initial_pos_y_m": 0.0,
         "initial_angle_deg": 0.0
     }
@@ -34,21 +35,21 @@ for i in range(NUM_YELLOW_ROBOTS):
 
 # ロボットごとの設定
 INITIAI_BLUE_ROBOT_PORT = 50050
-NUM_BLUE_ROBOTS = 2  # ロボットの数
+NUM_BLUE_ROBOTS = 11  # ロボットの数
 
 # ロボットごとの設定
 BLUE_ROBOTS_CONFIG = []
 
-for i in range(NUM_YELLOW_ROBOTS):
+for i in range(NUM_BLUE_ROBOTS):
     robot_config = {
         "id": i,
         "ip_for_command_listen": SIMULATOR_LISTEN_IP,
         "command_listen_port": INITIAI_BLUE_ROBOT_PORT + i * 2,
         "sensor_send_port": INITIAI_BLUE_ROBOT_PORT + i * 2 + 1,
         "enabled": True,
-        "initial_pos_x_m": -0.4 - i * 0.2,  # コート幅の1/4 左
+        "initial_pos_x_m": params.CENTEWR_CIRCLE_RADIUS_M + 0.2 + i * 0.2,  # コート幅の1/4 左
         "initial_pos_y_m": 0.0,
-        "initial_angle_deg": 0.0
+        "initial_angle_deg": 180
     }
     BLUE_ROBOTS_CONFIG.append(robot_config)
 

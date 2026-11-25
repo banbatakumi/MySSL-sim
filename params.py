@@ -1,23 +1,31 @@
 import math
 
 # --- DivAのパラメータ ---
-COURT_WIDTH_M = 12  # コートの幅 (メートル) - 白線間の距離
-COURT_HEIGHT_M = 9  # コートの高さ (メートル) - 白線間の距離
-CENTEWR_CIRCLE_RADIUS_M = 0.5  # センターサークルの半径 (メートル)
-GOAL_AREA_WIDTH_M = 3.6  # ゴールエリアの幅 (メートル)
-GOAL_AREA_HEIGHT_M = 1.8  # ゴールエリアの高さ (メートル)
-GOAL_WIDTH = 1.8
-GOAL_HEIGHT = 0.2
+# COURT_WIDTH_M = 12  # コートの幅 (メートル) - 白線間の距離
+# COURT_HEIGHT_M = 9  # コートの高さ (メートル) - 白線間の距離
+# CENTEWR_CIRCLE_RADIUS_M = 0.5  # センターサークルの半径 (メートル)
+# GOAL_AREA_WIDTH_M = 3.6  # ゴールエリアの幅 (メートル)
+# GOAL_AREA_HEIGHT_M = 1.8  # ゴールエリアの高さ (メートル)
+# GOAL_WIDTH = 1.8
+# GOAL_HEIGHT = 0.2
 
 
 # --- DivBのパラメータ ---
-# COURT_WIDTH_M = 9  # コートの幅 (メートル) - 白線間の距離
-# COURT_HEIGHT_M = 6  # コートの高さ (メートル) - 白線間の距離
-# CENTEWR_CIRCLE_RADIUS_M = 0.5  # センターサークルの半径 (メートル)
-# GOAL_AREA_WIDTH_M = 2  # ゴールエリアの幅 (メートル)
-# GOAL_AREA_HEIGHT_M = 1  # ゴールエリアの高さ (メートル)
-# GOAL_WIDTH = 1
-# GOAL_HEIGHT = 0.2
+COURT_WIDTH_M = 9  # コートの幅 (メートル) - 白線間の距離
+COURT_HEIGHT_M = 6  # コートの高さ (メートル) - 白線間の距離
+CENTEWR_CIRCLE_RADIUS_M = 0.5  # センターサークルの半径 (メートル)
+GOAL_AREA_WIDTH_M = 2  # ゴールエリアの幅 (メートル)
+GOAL_AREA_HEIGHT_M = 1  # ゴールエリアの高さ (メートル)
+GOAL_WIDTH = 1
+GOAL_HEIGHT = 0.2
+
+# COURT_WIDTH_M = 1.5  # コートの幅 (メートル) - 白線間の距離
+# COURT_HEIGHT_M = 1  # コートの高さ (メートル) - 白線間の距離
+# CENTEWR_CIRCLE_RADIUS_M = 0.2  # センターサークルの半径 (メートル)
+# GOAL_AREA_WIDTH_M = 0.5  # ゴールエリアの幅 (メートル)
+# GOAL_AREA_HEIGHT_M = 0.25  # ゴールエリアの高さ (メートル)
+# GOAL_WIDTH = 0.25
+# GOAL_HEIGHT = 0.1
 
 # --- ロボット物理パラメータ ---
 ROBOT_MASS_KG = 1.6  # ロボットの質量 (kg)

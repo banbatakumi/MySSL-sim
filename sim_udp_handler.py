@@ -23,10 +23,6 @@ class SimulatorUDP:
 
         self.send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # Visionデータやセンサーデータの送信先は config.CONTROLLER_IP
-        self.controller_dest_ip = config.CONTROLLER_IP
-        if self.controller_dest_ip == "0.0.0.0":  # "0.0.0.0" は送信先として不適切
-            self.controller_dest_ip = "127.0.0.1"
-            print("警告: config.CONTROLLER_IP が '0.0.0.0' でした。送信先を '127.0.0.1' に変更します。")
 
         self.cmd_sockets: Dict[str, socket.socket] = {}
         self.cmd_threads: Dict[str, threading.Thread] = {}
@@ -132,9 +128,9 @@ class SimulatorUDP:
             try:
                 msg = json.dumps(data_to_send).encode('utf-8')
                 self.send_socket.sendto(
-                    msg, (self.controller_dest_ip, config.VISION_SEND_PORT_YELLOW))
+                    msg, (config.CONTROLLER_IP_YELLOW, config.VISION_SEND_PORT_YELLOW))
                 self.send_socket.sendto(
-                    msg, (self.controller_dest_ip, config.VISION_SEND_PORT_BLUE))
+                    msg, (config.CONTROLLER_IP_BLUE, config.VISION_SEND_PORT_BLUE))
             except Exception as e:
                 print(f"遅延Visionデータの送信中にエラーが発生しました: {e}")
 
@@ -179,9 +175,17 @@ class SimulatorUDP:
 
             if data_to_send:
                 try:
-                    msg = json.dumps(data_to_send).encode('utf-8')
-                    self.send_socket.sendto(
-                        msg, (self.controller_dest_ip, destination_port))
+                    # チームごとに送信先を分ける
+                    if robot_id_key.startswith("yellow_"):
+                        self.send_socket.sendto(
+                            json.dumps(data_to_send).encode('utf-8'),
+                            (config.CONTROLLER_IP_YELLOW, destination_port)
+                        )
+                    elif robot_id_key.startswith("blue_"):
+                        self.send_socket.sendto(
+                            json.dumps(data_to_send).encode('utf-8'),
+                            (config.CONTROLLER_IP_BLUE, destination_port)
+                        )
                 except Exception as e:
                     print(f"遅延センサーデータ ({robot_id_key}) 送信中にエラー: {e}")
 
